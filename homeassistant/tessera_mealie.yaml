@@ -8,13 +8,14 @@
 #   image.tessera_mealie_lunch      the same for lunch (copy the block for breakfast, side, dessert, snack, drink)
 #
 # Set up:
-#   1. Replace http://192.168.1.10:9925 below (twice) with the address of your Mealie, as Home Assistant reaches it.
+#   1. Replace http://192.168.1.10:9925 below (three times) with the address of your Mealie, as Home Assistant reaches it.
 #   2. Save this file as /config/packages/tessera_mealie.yaml, and make sure configuration.yaml has
 #        homeassistant:
 #          packages: !include_dir_named packages
 #   3. Reload: Developer tools > YAML > All YAML configuration (or restart Home Assistant). Needs Home Assistant
 #      2025.4 or newer (script variables that keep their value after an if block).
 #   4. In Tessera, give the Meal tile its calendar (calendar.mealie_dinner) and, under Picture, image.tessera_mealie_dinner.
+#      The Chosen recipe tile takes input_select.tessera_mealie_recipe and image.tessera_mealie_chosen.
 
 script:
   tessera_mealie:
@@ -262,3 +263,60 @@ template:
           {%- set id = ids.get(state_attr('calendar.mealie_lunch', 'message') or '') -%}
           {{ 'http://192.168.1.10:9925/api/media/recipes/' ~ id ~ '/images/min-original.webp' if id else '' }}
         verify_ssl: false
+
+  # The list to pick a recipe from, for the plugin's Chosen recipe tile: every recipe in Mealie, sorted by name, kept
+  # in input_select.tessera_mealie_recipe every half hour, at start and when a recipe comes or goes; and the recipe
+  # ids by name, which the picture below needs. Already have a select of your own with recipe names? The tile takes
+  # that one as well.
+  - triggers:
+      - trigger: homeassistant
+        event: start
+      - trigger: time_pattern
+        minutes: "/30"
+      - trigger: state
+        entity_id: sensor.mealie_recipes
+        not_to: [unavailable, unknown]
+    actions:
+      - action: mealie.get_recipes
+        data:
+          config_entry_id: "{{ config_entry_id('calendar.mealie_dinner') }}"
+          result_limit: 500
+        response_variable: found
+      - variables:
+          names: >-
+            {{ found.recipes['items'] | map(attribute='name') | map('trim') | reject('eq', '') | unique | sort | list }}
+      - if: "{{ names | count > 0 and names != state_attr('input_select.tessera_mealie_recipe', 'options') }}"
+        then:
+          - action: input_select.set_options
+            target:
+              entity_id: input_select.tessera_mealie_recipe
+            data:
+              options: "{{ names }}"
+    sensor:
+      - name: Tessera Mealie recipes
+        unique_id: tessera_mealie_recipes
+        icon: mdi:chef-hat
+        state: "{{ names | count }}"
+        attributes:
+          ids: >-
+            {%- set ns = namespace(ids={}) -%}
+            {%- for r in found.recipes['items'] -%}
+              {%- set n = (r.name or '') | trim -%}
+              {%- if n -%}{%- set ns.ids = dict(ns.ids, **{n: r.recipe_id}) -%}{%- endif -%}
+            {%- endfor -%}
+            {{ ns.ids }}
+  - image:
+      - name: Tessera Mealie chosen
+        unique_id: tessera_mealie_chosen
+        url: >-
+          {%- set ids = state_attr('sensor.tessera_mealie_recipes', 'ids') or {} -%}
+          {%- set id = ids.get(states('input_select.tessera_mealie_recipe')) -%}
+          {{ 'http://192.168.1.10:9925/api/media/recipes/' ~ id ~ '/images/min-original.webp' if id else '' }}
+        verify_ssl: false
+
+# The recipe chosen by hand. Its options are filled from Mealie above; the "-" is only there until then.
+input_select:
+  tessera_mealie_recipe:
+    name: Tessera Mealie recipe
+    icon: mdi:chef-hat
+    options: ["-"]

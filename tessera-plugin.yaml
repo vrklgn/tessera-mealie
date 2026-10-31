@@ -1,7 +1,7 @@
 # Mealie: the meal planned in Mealie, from Home Assistant, on a tile with its picture, and the recipe (its ingredients
 # and its steps, page by page) on the card a tap opens. The tile belongs to a Mealie calendar of the Mealie
 # integration (calendar.mealie_dinner), or to a sensor the plugin's Home Assistant package makes straight from
-# Mealie's API. The ingredients and the steps come from a script in Home Assistant (homeassistant/), asked through the
+# Mealie's API. A second tile shows a recipe chosen by hand on a select entity, with a picker a tap opens. The ingredients and the steps come from a script in Home Assistant (homeassistant/), asked through the
 # app page by page: a screen never reaches Mealie itself. docs/MANIFEST.md of tessera-plugins has every field.
 id: mealie
 version: 0.1.0
@@ -17,6 +17,8 @@ boards: any
 flash_kb: 16
 
 permissions:
+  # The choice of a recipe on the select tile's entity.
+  home_assistant_actions: [input_select.select_option, select.select_option]
   # The recipe script of the plugin's Home Assistant package: a page of ingredients or steps, or the facts of a recipe.
   ha_commands: ["call_service:script.tessera_mealie"]
   # The meal the top bar's item reads, chosen when the plugin is added to a screen.
@@ -45,10 +47,30 @@ tiles:
       - { id: picture, kind: entity, domains: [image], label: picture, hint: picture_hint }
       - { id: details, kind: toggle, default: true, label: details, hint: details_hint }
       - { id: description, kind: toggle, default: true, label: description, hint: description_hint }
+  - id: pick
+    name: pick_name
+    icon: chef-hat
+    sizes: { min: 1x1, max: 4x4 }
+    # As the meal tile, and the recipes of the select to choose from (up to 64 names).
+    memory: 4800
+    pictures: 1
+    # A select entity whose options are recipes and whose state is the one chosen: the package's
+    # input_select.tessera_mealie_recipe, kept in step with Mealie, or a list of your own.
+    domains: [input_select, select]
+    attributes: [options]
+    has_attributes: [options]
+    example: pick_example
+    preview: { title: "{state}", badge: "{name}" }
+    options:
+      - { id: picture, kind: entity, domains: [image], label: picture, hint: picture_pick_hint }
+      - { id: details, kind: toggle, default: true, label: details, hint: details_hint }
+      - { id: description, kind: toggle, default: true, label: description, hint: description_hint }
 
 cards:
   # The recipe: the picture, the facts, and the ingredients and the steps page by page, a tap for the next page.
   - { id: recipe, name: card_name, pictures: 1 }
+  # The picker: the recipes of the select tile, one per row, a tap chooses one and opens its recipe.
+  - { id: choose, name: choose_name }
 
 bar_items:
   - { id: today, label: bar_today, icon: silverware-fork-knife, example: bar_example }

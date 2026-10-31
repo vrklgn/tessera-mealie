@@ -2,7 +2,8 @@
 
 The meal planned in [Mealie](https://mealie.io) on a Tessera tile: what is for dinner tonight (or the next day
 something is planned), its picture, the servings and the time it takes. A tap opens the recipe: its ingredients and
-its steps, page by page, written so the screen never cuts a line in half. On the day of the meal the top bar can say
+its steps, page by page, written so the screen never cuts a line in half. A second tile shows a recipe you pick
+yourself from a list on the screen, for a day without a plan. On the day of the meal the top bar can say
 "Dinner: Vodkapasta".
 
 The tile belongs to a Mealie calendar of Home Assistant's [Mealie integration](https://www.home-assistant.io/integrations/mealie/)
@@ -41,7 +42,11 @@ screen asks page by page, and an image entity with the meal's picture. Two packa
 
 4. Back in the tile's inspector, choose `image.tessera_mealie_dinner` under **Picture**. The tile shows the picture
    from the next time its data comes; the card shows it large.
-5. Optional: place **Today's meal** on a page's top bar (under "From plugins").
+. For a recipe picked by hand, place the **Chosen recipe** tile, give it `input_select.tessera_mealie_recipe` (the
+   package fills it with every recipe in Mealie, sorted by name) and `image.tessera_mealie_chosen` under **Picture**. A
+   tap on the tile opens the list; a tap on a recipe chooses it, in Home Assistant too, and opens its recipe. A select
+   of your own works as well, as long as its options are recipe names Mealie knows (the Picture then needs a map of
+   your own, as `sensor.tessera_mealie_recipes` in the package shows).
 
 More meal types: the integration package makes images for dinner and lunch; copy an `image` block for breakfast, side,
 dessert, snack or drink and change the calendar in it. The API package makes the dinner sensor and image; copy both
@@ -56,6 +61,11 @@ blocks and change `dinner` to the type you want.
 - **The card.** The picture, the name, the day, the servings and the time, the description, then the ingredients. A
   tap turns the page: the rest of the ingredients, then the steps, numbered, then the ingredients again. A section's
   name ("Optional: home-made pasta") stands in bold over its lines. Back closes it.
+- **The picker.** The recipes of the select, one per row, a dot before the one chosen, as many rows as fit; the line
+  at the bottom turns the page. A tap on a row chooses that recipe (Home Assistant's select follows) and opens its
+  recipe card; a tap on the one already chosen just opens it. The list holds what the select's options carry to
+  the screen: about fifty names fit, the first by name, so a library of hundreds wants a select of your own with the
+  recipes you cook.
 - **The top bar.** "Dinner: Vodkapasta" on the day of the meal, from the calendar chosen when the plugin was added.
 - **While it waits.** "Choose a Mealie calendar" until the tile has an entity, "Nothing planned" for a calendar with
   no meal in the coming week, "Mealie is away" while Home Assistant has no value. The card says "Asking Mealie" while
@@ -65,12 +75,15 @@ blocks and change `dinner` to the type you want.
 
 ## How it works
 
-- `tessera-plugin.yaml`: one tile of a `calendar` or `sensor` entity (`message`, `description`, `start_time`), a card
-  with a picture, a top bar item, and one Home Assistant command the app may ask on the plugin's behalf:
+- `tessera-plugin.yaml`: a tile of a `calendar` or `sensor` entity (`message`, `description`, `start_time`), a tile
+  of an `input_select` or `select` entity (its `options`), the recipe card with a picture, the picker, a top bar
+  item, the two select actions, and one Home Assistant command the app may ask on the plugin's behalf:
   `call_service:script.tessera_mealie`.
-- `components/mealie/`: the ESPHome component. The tile reads its entity, builds the picture's address through Home
-  Assistant's image proxy (`/api/image_proxy/<image entity>`), and asks the script once per meal for its facts. The
-  card asks the script for one page at a time, as many lines as fit and as many characters as its width holds.
+- `components/mealie/`: the ESPHome component. The tiles read their entity (the picker tile its select's state and
+  options), builds the picture's address through Home
+  Assistant's image proxy (`/api/image_proxy/<image entity>`), and ask the script once per meal for its facts. The
+  picker chooses with `input_select.select_option` (or `select.select_option`) and opens the recipe card for the
+  choice at once. The recipe card asks the script for one page at a time, as many lines as fit and as many characters as its width holds.
 - `homeassistant/`: the script and the entities, above.
 - `translations/`: the words on the screen (`screen`, English and Swedish) and in the app (`app`).
 
@@ -79,7 +92,7 @@ answers like this works, whatever it reads):
 
 | Asked with | Answers |
 |---|---|
-| `recipe` (the meal's name, or a slug), `date` (`2026-10-31`, optional), `part: info` | `{ ok: true, name, slug, servings (a number), yield (Mealie's word for it, or ""), total, prep, cook (texts, or ""), ingredients, steps (counts), picture (the recipe id) }` |
+| `recipe` (the meal's name, or a slug), `date` (`2026-10-31`, optional; a recipe picked by hand has none), `part: info` | `{ ok: true, name, slug, servings (a number), yield (Mealie's word for it, or ""), total, prep, cook (texts, or ""), ingredients, steps (counts), picture (the recipe id) }` |
 | the same with `part: ingredients` or `steps`, `page` (from 1), `per` (lines a page), `cols` (characters a line, at most 46) | `{ ok: true, part, page, pages, lines: [...] }`: `per` lines of at most `cols` characters and 46 bytes, wrapped on words. A line that goes on from the one before starts with a space; a section's name starts with `# `; a step's first line starts with its number, `3. `. |
 | a recipe it cannot find | `{ ok: false, error: not_found }` |
 

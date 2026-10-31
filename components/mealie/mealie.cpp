@@ -1,7 +1,6 @@
 #include "mealie.h"
 #include "esphome/core/hal.h"
 #include <algorithm>
-#include <climits>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -9,6 +8,7 @@
 namespace esphome::mealie {
 
 using tessera::Font;
+using tessera::Tone;
 namespace ui = tessera::ui;
 
 // The Home Assistant script of the plugin's package (homeassistant/), asked through the app.
@@ -19,8 +19,13 @@ static constexpr uint32_t RETRY_MS = 15u * 60u * 1000u;
 static constexpr int MAX_LINES = 24;
 // The widest line the script writes, in characters; the app cuts a text at 48 bytes.
 static constexpr int MAX_COLS = 46;
+// Recipes the picker keeps at most: the select's options, as many as the tile's data carries.
+static constexpr int MAX_CHOICES = 64;
 
 static void put(char *dst, size_t size, const char *src) { snprintf(dst, size, "%s", src ? src : ""); }
+static bool starts(const char *text, const char *head) { return text && strncmp(text, head, strlen(head)) == 0; }
+// A select entity: a recipe chosen by hand, in Home Assistant (input_select.x, select.x).
+static bool is_select(const char *entity) { return starts(entity, "input_select.") || starts(entity, "select."); }
 
 // ---- Days ----
 
@@ -76,8 +81,14 @@ static std::string when_text(const tessera::Plugin *plugin, uint32_t start) {
 
 enum class Status : uint8_t { CHOOSE, AWAY, NONE, SHOWN };
 
+// A state that holds no recipe: Home Assistant's own words, and the "-" the package's select starts with.
+static bool blank(const char *s) {
+  return !*s || !strcmp(s, "unknown") || !strcmp(s, "unavailable") || !strcmp(s, "none") || !strcmp(s, "-");
+}
+
 // The meal of a tile's data (docs/FIRMWARE_API.md, "What on_state gets"): a Mealie calendar's next event, or a meal
-// sensor of the plugin's package, both with `message`, `description` and `start_time`.
+// sensor of the plugin's package, both with `message`, `description` and `start_time`; or a select entity, whose
+// state is the recipe chosen by hand.
 static Status read_meal(JsonObjectConst data, const char *entity, Meal &m) {
   const char *wait = data["wait"] | "";
   JsonVariantConst state = data["state"];
@@ -86,8 +97,9 @@ static Status read_meal(JsonObjectConst data, const char *entity, Meal &m) {
   if (!strcmp(s, "unavailable") || !strcmp(s, "unknown")) return Status::AWAY;
   JsonObjectConst a = data["attributes"];
   const char *name = a["message"] | "";
+  if (is_select(entity)) name = blank(s) ? "" : s;
   // A sensor's state is the meal itself when it carries no message.
-  if (!*name && strncmp(entity, "sensor.", 7) == 0 && *s && strcmp(s, "none") && strcmp(s, "off")) name = s;
+  else if (!*name && starts(entity, "sensor.") && !blank(s) && strcmp(s, "off")) name = s;
   put(m.name, sizeof m.name, name);
   put(m.description, sizeof m.description, a["description"] | "");
   // The day: as seconds since 1970 (the app turns a `_time` attribute into one), or still as text.
@@ -100,6 +112,19 @@ static Status read_meal(JsonObjectConst data, const char *entity, Meal &m) {
   date_of(m.start, m.date, sizeof m.date);
   put(m.entity, sizeof m.entity, entity);
   return m.name[0] ? Status::SHOWN : Status::NONE;
+}
+
+// The recipes a select entity offers, from its `options`.
+static void read_choices(JsonObjectConst data, tessera::List<Line> &out) {
+  JsonArrayConst options = data["attributes"]["options"].as<JsonArrayConst>();
+  if (options.isNull()) return;
+  out.clear();
+  for (JsonVariantConst option : options) {
+    if (static_cast<int>(out.size()) >= MAX_CHOICES) break;
+    Line line;
+    put(line.text, sizeof line.text, option | "");
+    if (!blank(line.text)) out.push_back(line);
+  }
 }
 
 // The picture's address: the image entity chosen in the inspector, through Home Assistant's own image proxy, marked
@@ -154,10 +179,10 @@ static const char *why_not(JsonObjectConst message) {
   return "no_script";
 }
 
-// ---- The tile: the meal of its calendar, with its picture ----
+// ---- The tile: the meal of its calendar, or the recipe chosen on its select, with its picture ----
 class MealTile : public tessera::Tile, public Asker {
  public:
-  explicit MealTile(Mealie *plugin) : plugin_(plugin) {}
+  MealTile(Mealie *plugin, bool pick) : plugin_(plugin), pick_(pick) {}
   ~MealTile() override { plugin_->forget(this); }
 
   void create(const tessera::TileContext &c) override {
@@ -244,6 +269,7 @@ class MealTile : public tessera::Tile, public Asker {
     Meal m;
     status_ = read_meal(data, entity_, m);
     picture_of(data, image_, m);
+    if (pick_) read_choices(data, choices_);
     // Another meal, or another day: the facts are asked again; the same one keeps them.
     if (strcmp(m.name, meal_.name) != 0 || strcmp(m.date, meal_.date) != 0) {
       asking_ = false;
@@ -286,9 +312,15 @@ class MealTile : public tessera::Tile, public Asker {
     ui::set_color(note_, theme::MUTED);
   }
 
+  // A tap opens the recipe; on a select tile, the list to choose from.
   void on_tap() override {
     if (status_ == Status::CHOOSE) return;
     plugin_->current = meal_;
+    if (pick_) {
+      plugin_->choices = choices_;
+      tessera::open_card(plugin_->plugin_id(), "choose", entity_, tile_, name_[0] ? name_ : word_);
+      return;
+    }
     tessera::open_card(plugin_->plugin_id(), "recipe", entity_, tile_, meal_.name);
   }
 
@@ -308,20 +340,22 @@ class MealTile : public tessera::Tile, public Asker {
     ui::set_text(title_, shown ? meal_.name : "");
     if (desc_) ui::set_text(desc_, shown ? meal_.description : "");
     if (facts_) ui::set_text(facts_, shown ? facts_text(plugin_, meal_.info) : "");
-    const char *why = status_ == Status::CHOOSE ? "choose" : status_ == Status::AWAY ? "away"
-                    : status_ == Status::NONE ? "none" : nullptr;
+    const char *why = status_ == Status::CHOOSE ? (pick_ ? "choose_select" : "choose")
+                    : status_ == Status::AWAY ? "away"
+                    : status_ == Status::NONE ? (pick_ ? "none_chosen" : "none") : nullptr;
     ui::set_text(note_, why ? plugin_->text(why) : "");
     if (place_) ui::set_picture(place_, shown ? meal_.picture : "", tessera::Fit::COVER);
   }
 
   Mealie *plugin_;
+  bool pick_;
   int width_ = 0, height_ = 0, tile_ = -1;
-  char entity_[64] = {}, name_[52] = {}, image_[64] = {};
+  char entity_[64] = {}, name_[52] = {}, image_[64] = {}, word_[32] = {};
   bool details_ = true, describe_ = true, one_ = false, asking_ = false;
   uint32_t failed_at_ = 0, minute_ = 0;
   Status status_ = Status::CHOOSE;
   Meal meal_;
-  char word_[32] = {};
+  tessera::List<Line> choices_;
   lv_obj_t *place_{}, *head_{}, *when_{}, *title_{}, *desc_{}, *facts_{}, *note_{};
 };
 
@@ -404,8 +438,10 @@ class RecipeCard : public tessera::Card, public Asker {
     ask(false, 1);
   }
 
-  // The tile it was opened from changed: another meal starts the recipe again.
+  // The tile it was opened from changed: another meal starts the recipe again. A recipe chosen on the picker stays
+  // while Home Assistant catches up with the choice.
   void on_state(JsonObjectConst data) override {
+    if (meal_.fixed) return;
     Meal m;
     if (read_meal(data, meal_.entity, m) != Status::SHOWN || !strcmp(m.name, meal_.name)) return;
     put(meal_.name, sizeof meal_.name, m.name);
@@ -493,8 +529,9 @@ class RecipeCard : public tessera::Card, public Asker {
       const char *line = i < lines_ ? rows_[i].text : "";
       const bool section = line[0] == '#' && line[1] == ' ';
       const bool more_of = line[0] == ' ';
-      ui::set_font(rows_[i].label, section ? Font::TITLE : Font::BODY_LARGE);
-      lv_obj_set_height(rows_[i].label, ui::line_height(section ? Font::TITLE : Font::BODY_LARGE));
+      const Font face = section ? Font::TITLE : Font::BODY_LARGE;
+      ui::set_font(rows_[i].label, face);
+      lv_obj_set_height(rows_[i].label, ui::line_height(face));
       lv_obj_set_x(rows_[i].label, more_of ? indent_ : 0);
       ui::set_text(rows_[i].label, section ? line + 2 : more_of ? line + 1 : line);
     }
@@ -516,11 +553,144 @@ class RecipeCard : public tessera::Card, public Asker {
   lv_obj_t *place_{}, *name_{}, *facts_{}, *desc_{}, *header_{}, *note_{}, *hint_{}, *pager_{};
 };
 
+// ---- The picker: the recipes of a select entity, a tap chooses one and opens its recipe ----
+class ChooseCard : public tessera::Card {
+ public:
+  explicit ChooseCard(Mealie *plugin) : plugin_(plugin) {}
+
+  void open(const tessera::CardContext &c) override {
+    width_ = c.width;
+    height_ = c.height;
+    tile_ = c.tile;
+    put(entity_, sizeof entity_, c.entity ? c.entity : plugin_->current.entity);
+    put(current_, sizeof current_, plugin_->current.name);
+    choices_ = plugin_->choices;
+    const int gap = ui::px(8), bh = ui::line_height(Font::BODY), lh = ui::line_height(Font::BODY_LARGE);
+    // A row a finger can hit: a dot for the one chosen, the recipe's name beside it.
+    dot_ = ui::px(ui::large() ? 10 : 8);
+    row_h_ = std::max(lh + ui::px(6), ui::mm(7));
+    count_ = std::max(1, std::min(MAX_CHOICES, (height_ - bh - gap) / row_h_));
+    for (int i = 0; i < count_; ++i) {
+      Row r;
+      r.mark = ui::block(c.parent, theme::ACCENT);
+      lv_obj_set_size(r.mark, dot_, dot_);
+      lv_obj_set_style_radius(r.mark, LV_RADIUS_CIRCLE, 0);
+      lv_obj_set_pos(r.mark, 0, i * row_h_ + (row_h_ - dot_) / 2);
+      r.label = ui::label(c.parent, Font::BODY_LARGE, theme::INK);
+      lv_obj_set_size(r.label, std::max(1, width_ - dot_ - gap), lh);
+      lv_obj_set_pos(r.label, dot_ + gap, i * row_h_ + (row_h_ - lh) / 2);
+      rows_.push_back(r);
+    }
+    note_ = ui::text(c.parent, Font::BODY, theme::MUTED);
+    lv_obj_set_size(note_, width_, 2 * bh);
+    lv_obj_set_style_text_align(note_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(note_, 0, ui::px(4));
+    hint_ = ui::label(c.parent, Font::BODY, theme::MUTED);
+    lv_obj_set_size(hint_, width_ / 2, bh);
+    lv_obj_set_pos(hint_, 0, height_ - bh);
+    pager_ = ui::label(c.parent, Font::BODY, theme::MUTED);
+    lv_obj_set_size(pager_, width_ - width_ / 2, bh);
+    lv_obj_set_style_text_align(pager_, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_pos(pager_, width_ / 2, height_ - bh);
+    texts();
+  }
+
+  // The tile's data: the recipe chosen now, and the list; Home Assistant reports the choice a moment after a tap.
+  void on_state(JsonObjectConst data) override {
+    read_choices(data, choices_);
+    JsonVariantConst state = data["state"];
+    if (!state.isNull()) {
+      const char *s = state | "";
+      put(current_, sizeof current_, blank(s) ? "" : s);
+    }
+    texts();
+  }
+
+  // A tap on a row chooses that recipe and opens it; a tap on the line at the bottom turns the page.
+  void on_tap() override {
+    const tessera::Point p = tessera::tap_point();
+    if (p.y < 0) return;
+    if (p.y >= count_ * row_h_) {
+      if (pages() > 1) {
+        page_ = page_ % pages() + 1;
+        texts();
+      }
+      return;
+    }
+    const int at = (page_ - 1) * count_ + p.y / row_h_;
+    if (at < 0 || at >= static_cast<int>(choices_.size())) return;
+    choose(choices_[at].text);
+  }
+
+  void on_theme() override {
+    for (auto &r : rows_) {
+      ui::set_color(r.label, theme::INK);
+      ui::set_fill(r.mark, Tone::ACCENT, theme::ACCENT);
+    }
+    ui::set_color(note_, theme::MUTED);
+    ui::set_color(hint_, theme::MUTED);
+    ui::set_color(pager_, theme::MUTED);
+  }
+
+ private:
+  struct Row {
+    lv_obj_t *mark = nullptr, *label = nullptr;
+  };
+
+  int pages() const { return std::max(1, (static_cast<int>(choices_.size()) + count_ - 1) / count_); }
+
+  // Tell Home Assistant, then show the recipe at once: its card keeps the choice while the select catches up.
+  void choose(const char *name) {
+    Meal &m = plugin_->current;
+    if (strcmp(name, current_) != 0) {
+      JsonDocument fields;
+      fields["option"] = name;
+      const char *service = starts(entity_, "select.") ? "select.select_option" : "input_select.select_option";
+      tessera::action(service, entity_, fields.as<JsonVariantConst>());
+      put(m.name, sizeof m.name, name);
+      m.description[0] = 0;
+      m.picture[0] = 0;
+      m.info = Info();
+    }
+    put(m.entity, sizeof m.entity, entity_);
+    m.date[0] = 0;
+    m.start = 0;
+    m.fixed = true;
+    tessera::open_card(plugin_->plugin_id(), "recipe", entity_, tile_, name);
+  }
+
+  void texts() {
+    const int n = static_cast<int>(choices_.size());
+    if (page_ > pages()) page_ = 1;
+    for (int i = 0; i < count_; ++i) {
+      const int at = (page_ - 1) * count_ + i;
+      const bool there = at < n;
+      ui::set_text(rows_[i].label, there ? choices_[at].text : "");
+      if (there && !strcmp(choices_[at].text, current_)) lv_obj_remove_flag(rows_[i].mark, LV_OBJ_FLAG_HIDDEN);
+      else lv_obj_add_flag(rows_[i].mark, LV_OBJ_FLAG_HIDDEN);
+    }
+    ui::set_text(note_, n ? "" : plugin_->text("no_choices"));
+    ui::set_text(hint_, n ? plugin_->text(pages() > 1 ? "tap_more" : "choose_tap") : "");
+    ui::set_text(pager_, pages() > 1 ? tessera::fill(tessera::fill(plugin_->text("page"), "n", std::to_string(page_)).c_str(),
+                                                     "m", std::to_string(pages()))
+                                     : "");
+  }
+
+  Mealie *plugin_;
+  int width_ = 0, height_ = 0, tile_ = -1, dot_ = 0, row_h_ = 1, count_ = 1, page_ = 1;
+  char entity_[64] = {}, current_[52] = {};
+  tessera::List<Line> choices_;
+  tessera::List<Row> rows_;
+  lv_obj_t *note_{}, *hint_{}, *pager_{};
+};
+
 // ---- The plugin ----
 
 void Mealie::setup() {
-  add_tile("meal", [this]() { return new MealTile(this); });
+  add_tile("meal", [this]() { return new MealTile(this, false); });
+  add_tile("pick", [this]() { return new MealTile(this, true); });
   add_card("recipe", [this]() { return new RecipeCard(this); });
+  add_card("choose", [this]() { return new ChooseCard(this); });
   add_bar_item("today", [this]() { return bar(); });
 }
 
@@ -560,6 +730,7 @@ void Mealie::on_message(JsonObjectConst message) {
 }
 
 std::string Mealie::meal_word(const char *entity) const {
+  if (is_select(entity)) return text("chosen");
   static const char *const KINDS[] = {"breakfast", "lunch", "dinner", "side", "dessert", "snack", "drink"};
   for (const char *kind : KINDS)
     if (entity && strstr(entity, kind)) return text(kind);

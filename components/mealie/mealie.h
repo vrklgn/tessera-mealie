@@ -31,14 +31,21 @@ struct Info {
 struct Meal {
   char name[52] = {};          // the recipe's name (the calendar's message), the app cuts a text at 48 bytes
   char description[52] = {};
-  char entity[64] = {};        // the calendar or sensor it comes from
+  char entity[64] = {};        // the calendar, sensor or select it comes from
   char picture[128] = {};      // the picture's address through Home Assistant's image proxy, "" for none
-  char date[12] = {};          // the meal plan day, "2026-10-31", for the script
+  char date[12] = {};          // the meal plan day, "2026-10-31", for the script; "" for a recipe chosen by hand
   uint32_t start = 0;          // that day, seconds since 1970
+  bool fixed = false;          // chosen on the picker: the recipe card keeps it while Home Assistant catches up
   Info info;
 };
 
-// The plugin: a tile ("meal"), a card ("recipe") and an item for the top bar ("today"). It carries the questions of
+// One line of text in PSRAM: a recipe of the list to choose from.
+struct Line {
+  char text[52] = {};
+};
+
+// The plugin: a tile of a Mealie calendar ("meal"), a tile of a select entity with a recipe chosen by hand ("pick"),
+// the recipe card ("recipe"), the picker ("choose") and an item for the top bar ("today"). It carries the questions of
 // its tiles and cards to the app and hands each its answer.
 class Mealie : public Component, public tessera::Plugin {
  public:
@@ -54,10 +61,12 @@ class Mealie : public Component, public tessera::Plugin {
   // of at most `cols` characters. The number the answer carries, 0 when it could not be sent.
   uint32_t ask(Asker *who, const Meal &meal, const char *part, int page, int per, int cols);
   void forget(Asker *who);
-  // The word for a meal from its entity id ("Dinner" for calendar.mealie_dinner), or the plain word for a meal.
+  // The word for a meal from its entity id ("Dinner" for calendar.mealie_dinner, "Recipe" for a select), or the
+  // plain word for a meal.
   std::string meal_word(const char *entity) const;
 
-  Meal current;   // what the tile tapped last showed, for the card it opened
+  Meal current;                  // what the tile tapped last showed, for the card it opened
+  tessera::List<Line> choices;   // the recipes of the select tile tapped last, for the picker
 
  protected:
   tessera::BarItem bar() const;

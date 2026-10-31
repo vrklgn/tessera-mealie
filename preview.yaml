@@ -18,6 +18,11 @@ tiles:
   - tile: meal
     name: No calendar
     sizes: [1x1]
+  - tile: pick
+    name: Recipe
+    entity: input_select.tessera_mealie_recipe
+    options: { picture: image.tessera_mealie_chosen }
+    sizes: [2x2, 2x1, 1x1]
 
 states:
   calendar.mealie_dinner:
@@ -44,9 +49,19 @@ states:
     state: "2026-10-31T09:00:00+00:00"
     attributes:
       friendly_name: Tessera Mealie dinner
+  input_select.tessera_mealie_recipe:
+    state: Vodkapasta
+    attributes:
+      friendly_name: Tessera Mealie recipe
+      options: [Beef stew, Chicken curry, Grilled chicken with smashed potatoes, Lasagne, Pancakes, Ramen, Vodkapasta]
+  image.tessera_mealie_chosen:
+    state: "2026-10-31T09:00:00+00:00"
+    attributes:
+      friendly_name: Tessera Mealie chosen
 
 cards:
   - { card: recipe, entity: calendar.mealie_dinner }
+  - { card: choose, entity: input_select.tessera_mealie_recipe }
 
 # The script's answer, as the tile and the card ask it: the recipe's facts and a page of its ingredients in one.
 commands:
@@ -88,3 +103,4 @@ commands:
 
 pictures:
   "/api/image_proxy/image.tessera_mealie_dinner?v=0": preview/dinner.png
+  "/api/image_proxy/image.tessera_mealie_chosen?v=0": preview/dinner.png

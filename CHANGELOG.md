@@ -7,3 +7,5 @@
 - A tap opens the recipe: its facts, its ingredients and its steps, page by page, from a Home Assistant script
   the plugin's package brings.
 - "Dinner: Vodkapasta" in the top bar on the day of the meal.
+- A second tile, Chosen recipe, for a recipe picked by hand from a list on the screen: a select entity in Home
+  Assistant, which the package fills with every recipe in Mealie.
