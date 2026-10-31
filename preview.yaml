@@ -1,0 +1,90 @@
+# What tools/preview.py of the tessera-plugins repository shows (its docs/PREVIEW.md): tonight's dinner from a Mealie
+# calendar with its picture, tomorrow's lunch without one, a calendar with nothing planned, a tile without an entity,
+# and the recipe card with a page of ingredients. Never put a secret here.
+tiles:
+  - tile: meal
+    name: Dinner
+    entity: calendar.mealie_dinner
+    options: { picture: image.tessera_mealie_dinner }
+    sizes: [2x2, 2x1, 3x2, 4x2, 1x2, 1x1]
+  - tile: meal
+    name: Lunch
+    entity: calendar.mealie_lunch
+    sizes: [2x1, 2x2]
+  - tile: meal
+    name: Breakfast
+    entity: calendar.mealie_breakfast
+    sizes: [2x1]
+  - tile: meal
+    name: No calendar
+    sizes: [1x1]
+
+states:
+  calendar.mealie_dinner:
+    state: "off"
+    attributes:
+      friendly_name: Mealie Dinner
+      message: Vodkapasta
+      description: A spicy vodka pasta that breaks the rules with a good spoonful of hot, salty and sweet gochujang.
+      start_time: "{now}"
+      end_time: "{now}"
+  calendar.mealie_lunch:
+    state: "off"
+    attributes:
+      friendly_name: Mealie Lunch
+      message: Grilled chicken with smashed potatoes
+      description: Grilled chicken and crispy potatoes from five main ingredients.
+      start_time: "{now+1d}"
+      end_time: "{now+1d}"
+  calendar.mealie_breakfast:
+    state: "off"
+    attributes:
+      friendly_name: Mealie Breakfast
+  image.tessera_mealie_dinner:
+    state: "2026-10-31T09:00:00+00:00"
+    attributes:
+      friendly_name: Tessera Mealie dinner
+
+cards:
+  - { card: recipe, entity: calendar.mealie_dinner }
+
+# The script's answer, as the tile and the card ask it: the recipe's facts and a page of its ingredients in one.
+commands:
+  "call_service:script.tessera_mealie":
+    ok: true
+    name: Vodkapasta
+    slug: vodkapasta
+    servings: 4
+    yield: ""
+    total: "45 Minutes"
+    prep: "15 Minutes"
+    cook: "30 Minutes"
+    ingredients: 18
+    steps: 8
+    part: ingredients
+    page: 1
+    pages: 2
+    lines:
+      - "0.6 dl extra virgin olive oil"
+      - "115 g guanciale, cut into 3 mm dice"
+      - "2 red Fresno chilies, finely chopped"
+      - "5 cloves of garlic, thinly sliced"
+      - "13 g caster sugar"
+      - "48 g gochujang"
+      - "256 g tomato paste"
+      - "1 tbsp vodka"
+      - "0.6 dl water"
+      - "3.6 dl whipping cream"
+      - "455 g dried rigatoni, or home-made"
+      - "75 g grated pecorino"
+      - "28 g unsalted butter, cold and diced"
+      - "Kosher salt, to taste"
+      - "Freshly grated Parmigiano Reggiano, to taste"
+      - "# Optional: home-made pasta"
+      - "500 g semolina flour, plus more for"
+      - " dusting"
+      - "250 g water, room temperature, plus more"
+      - " as needed"
+
+pictures:
+  "/api/image_proxy/image.tessera_mealie_dinner?v=0": preview/dinner.png

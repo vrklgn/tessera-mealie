@@ -1,0 +1,22 @@
+# What a screen gets when it takes this plugin. Tessera includes this file from the screen's <name>.plugins.yaml with
+# MEAL filled in (the input chosen when the plugin was added), and adds the components folder beside it.
+defaults:
+  MEAL: calendar.mealie_dinner
+
+# The meal the top bar's item reads, straight from Home Assistant: what is planned, and for which day.
+text_sensor:
+  - platform: homeassistant
+    id: mealie_bar_message
+    entity_id: ${MEAL}
+    attribute: message
+    internal: true
+  - platform: homeassistant
+    id: mealie_bar_start
+    entity_id: ${MEAL}
+    attribute: start_time
+    internal: true
+
+mealie:
+  message: mealie_bar_message
+  start: mealie_bar_start
+  meal: ${MEAL}

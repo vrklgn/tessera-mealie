@@ -1,0 +1,283 @@
+# Tessera Mealie, the Home Assistant side, straight from Mealie's API with your Mealie's address and an API token:
+# for homes without the Mealie integration, or that want the plugin to read Mealie directly. Home Assistant does the
+# asking; a Tessera screen never reaches Mealie, and the token never leaves Home Assistant.
+#
+# What it adds:
+#   script.tessera_mealie           answers a Tessera screen's questions about a meal: the recipe's facts, and its
+#                                   ingredients and steps page by page (the plugin's README has the contract)
+#   sensor.tessera_mealie_plan      the week's meal plan as Mealie gives it, read every 15 minutes
+#   sensor.tessera_mealie_dinner    the dinner planned next, shaped as a Mealie calendar: the tile's entity
+#   image.tessera_mealie_dinner     its picture, served from your Mealie
+#                                   (copy the two blocks for lunch, breakfast, side, dessert, snack, drink)
+#
+# Set up:
+#   1. In Mealie, make an API token: your profile > API Tokens. In Home Assistant's secrets.yaml add
+#        mealie_url: http://192.168.1.10:9925
+#        mealie_authorization: Bearer eyJ...the token...
+#      (the word Bearer, a space, then the token).
+#   2. Replace http://192.168.1.10:9925 below (three places) with the same address as mealie_url.
+#   3. Save this file as /config/packages/tessera_mealie_api.yaml, and make sure configuration.yaml has
+#        homeassistant:
+#          packages: !include_dir_named packages
+#   4. Reload: Developer tools > YAML > All YAML configuration (or restart Home Assistant). Needs Home Assistant
+#      2025.4 or newer. Do not use this file together with tessera_mealie.yaml: both make script.tessera_mealie.
+#   5. In Tessera, give the Meal tile sensor.tessera_mealie_dinner and, under Picture, image.tessera_mealie_dinner.
+
+rest_command:
+  # One call of Mealie's API: `path` after /api/, the token from secrets.yaml.
+  tessera_mealie_api:
+    url: "http://192.168.1.10:9925/api/{{ path }}"
+    method: get
+    headers:
+      Authorization: !secret mealie_authorization
+      Accept: application/json
+    timeout: 20
+
+rest:
+  # The week's meal plan, every 15 minutes.
+  - resource_template: "http://192.168.1.10:9925/api/households/mealplans?start_date={{ now().date() }}&end_date={{ (now() + timedelta(days=7)).date() }}&perPage=50"
+    headers:
+      Authorization: !secret mealie_authorization
+      Accept: application/json
+    scan_interval: 900
+    sensor:
+      - name: Tessera Mealie plan
+        unique_id: tessera_mealie_plan
+        icon: mdi:silverware-fork-knife
+        value_template: "{{ value_json['items'] | count }}"
+        json_attributes: [items]
+
+template:
+  # The dinner planned next (today's, else the first to come), shaped as the Mealie integration's calendar shows it:
+  # the meal as `message`, its description, and the day as `start_time`. The Tessera tile reads those.
+  - triggers:
+      - trigger: homeassistant
+        event: start
+      - trigger: state
+        entity_id: sensor.tessera_mealie_plan
+        attribute: items
+      - trigger: time_pattern
+        hours: "/1"
+    actions:
+      - variables:
+          meals: >-
+            {{ (state_attr('sensor.tessera_mealie_plan', 'items') or []) | selectattr('entryType', 'eq', 'dinner')
+               | sort(attribute='date') | list }}
+          meal: "{{ meals[0] if meals else {} }}"
+    sensor:
+      - name: Tessera Mealie dinner
+        unique_id: tessera_mealie_dinner
+        icon: mdi:silverware-fork-knife
+        state: "{{ ((meal.recipe.name if meal.recipe else meal.title) or 'none') if meal else 'none' }}"
+        attributes:
+          message: "{{ ((meal.recipe.name if meal.recipe else meal.title) or '') if meal else '' }}"
+          description: "{{ ((meal.recipe.description if meal.recipe else meal.text) or '') if meal else '' }}"
+          start_time: "{{ meal.date ~ ' 00:00:00' if meal else '' }}"
+          recipe_id: "{{ meal.recipe.id if meal and meal.recipe else '' }}"
+          slug: "{{ meal.recipe.slug if meal and meal.recipe else '' }}"
+  - image:
+      - name: Tessera Mealie dinner
+        unique_id: tessera_mealie_dinner
+        url: >-
+          {%- set id = state_attr('sensor.tessera_mealie_dinner', 'recipe_id') -%}
+          {{ 'http://192.168.1.10:9925/api/media/recipes/' ~ id ~ '/images/min-original.webp' if id else '' }}
+        verify_ssl: false
+
+script:
+  tessera_mealie:
+    alias: Tessera Mealie recipe
+    icon: mdi:silverware-fork-knife
+    description: >-
+      Answers a Tessera screen's question about a meal: the facts of its recipe (part info), or a page of its
+      ingredients or steps (part ingredients or steps), per lines of at most cols characters, wrapped on words.
+      Asks your Mealie's API directly. Made for the Tessera Mealie plugin.
+    mode: parallel
+    max: 10
+    fields:
+      recipe:
+        name: Recipe
+        description: The recipe's name as the meal sensor shows it, or its slug.
+        example: Vodkapasta
+        selector:
+          text:
+      date:
+        name: Day
+        description: The day the meal is planned on (YYYY-MM-DD). Without it the recipe is found by its name alone.
+        selector:
+          date:
+      part:
+        name: Part
+        description: "info: the recipe's facts. ingredients or steps: a page of lines."
+        default: info
+        selector:
+          select:
+            options: [info, ingredients, steps]
+      page:
+        name: Page
+        default: 1
+        selector:
+          number: { min: 1, max: 99, mode: box }
+      per:
+        name: Lines per page
+        default: 12
+        selector:
+          number: { min: 1, max: 48, mode: box }
+      cols:
+        name: Characters per line
+        default: 46
+        selector:
+          number: { min: 8, max: 46, mode: box }
+    sequence:
+      - variables:
+          wanted: "{{ (recipe | default('')) | string | trim }}"
+          day: "{{ (date | default('')) | string | trim }}"
+          what: "{{ (part | default('info')) | string }}"
+          page_no: "{{ [(page | default(1)) | int(1), 1] | max }}"
+          per_page: "{{ [(per | default(12)) | int(12), 1] | max }}"
+          width: "{{ [[(cols | default(46)) | int(46), 8] | max, 46] | min }}"
+          slug: ""
+      # The recipe planned on that day under that name.
+      - if: "{{ day != '' and wanted != '' }}"
+        then:
+          - action: rest_command.tessera_mealie_api
+            data:
+              path: "households/mealplans?start_date={{ day }}&end_date={{ day }}&perPage=50"
+            response_variable: plan
+            continue_on_error: true
+          - variables:
+              slug: >-
+                {%- set ns = namespace(slug='') -%}
+                {%- for m in (plan.content['items'] if plan is defined and plan.status == 200 else []) if m.recipe -%}
+                  {%- if ns.slug == '' and (m.recipe.name == wanted or m.recipe.slug == wanted) -%}
+                    {%- set ns.slug = m.recipe.slug -%}
+                  {%- endif -%}
+                {%- endfor -%}
+                {{ ns.slug }}
+      # Else the recipe by its name: the one named exactly so, else the first Mealie finds.
+      - if: "{{ slug == '' and wanted != '' }}"
+        then:
+          - action: rest_command.tessera_mealie_api
+            data:
+              path: "recipes?search={{ wanted | urlencode }}&perPage=10"
+            response_variable: found
+            continue_on_error: true
+          - variables:
+              slug: >-
+                {%- set items = found.content['items'] if found is defined and found.status == 200 else [] -%}
+                {%- set exact = items | selectattr('name', 'eq', wanted) | map(attribute='slug') | list -%}
+                {%- set by_slug = items | selectattr('slug', 'eq', wanted) | map(attribute='slug') | list -%}
+                {{ (exact + by_slug + (items | map(attribute='slug') | list) + [''])[0] }}
+      - if: "{{ slug == '' }}"
+        then:
+          - variables:
+              answer:
+                ok: false
+                error: not_found
+          - stop: The recipe is not in Mealie.
+            response_variable: answer
+      - action: rest_command.tessera_mealie_api
+        data:
+          path: "recipes/{{ slug }}"
+        response_variable: got
+        continue_on_error: true
+      - if: "{{ got is not defined or got.status != 200 }}"
+        then:
+          - variables:
+              answer:
+                ok: false
+                error: not_found
+          - stop: Mealie did not give the recipe.
+            response_variable: answer
+      - variables:
+          r: "{{ got.content }}"
+      # The facts: the tile shows the servings and the time, the card asks for the pages.
+      - if: "{{ what == 'info' }}"
+        then:
+          - variables:
+              answer:
+                ok: true
+                name: "{{ r.name }}"
+                slug: "{{ r.slug }}"
+                servings: "{{ r.recipeServings | int(0) }}"
+                yield: "{{ r.recipeYield or '' }}"
+                total: "{{ r.totalTime or '' }}"
+                prep: "{{ r.prepTime or '' }}"
+                cook: "{{ r.performTime or '' }}"
+                ingredients: "{{ (r.recipeIngredient or []) | count }}"
+                steps: "{{ (r.recipeInstructions or []) | count }}"
+                picture: "{{ r.id }}"
+          - stop: The recipe's facts.
+            response_variable: answer
+      # The lines: every ingredient, or every step with its number, wrapped on words to `cols` characters and 46 bytes
+      # (the app cuts a text at 48). A line that goes on starts with a space; a section's name starts with "# ".
+      - variables:
+          lines: >-
+            {%- macro bytes(s) -%}
+              {%- set ns = namespace(b=0) -%}
+              {%- for c in s -%}
+                {%- set o = c | ord -%}
+                {%- set ns.b = ns.b + (1 if o < 128 else 2 if o < 2048 else 3 if o < 65536 else 4) -%}
+              {%- endfor -%}
+              {{ ns.b }}
+            {%- endmacro -%}
+            {%- macro wrap(text, head, cols) -%}
+              {%- set ns = namespace(lines=[], cur=head, chars=(head | length), b=(bytes(head) | int), empty=true) -%}
+              {%- for word in text.split() -%}
+                {%- set wc = word | length -%}
+                {%- set wb = bytes(word) | int -%}
+                {%- if not ns.empty and (ns.chars + 1 + wc > cols or ns.b + 1 + wb > 46) -%}
+                  {%- set ns.lines = ns.lines + [ns.cur] -%}
+                  {%- set ns.cur = ' ' ~ word -%}
+                  {%- set ns.chars = 1 + wc -%}
+                  {%- set ns.b = 1 + wb -%}
+                {%- else -%}
+                  {%- set sep = '' if ns.empty else ' ' -%}
+                  {%- set ns.cur = ns.cur ~ sep ~ word -%}
+                  {%- set ns.chars = ns.chars + (sep | length) + wc -%}
+                  {%- set ns.b = ns.b + (sep | length) + wb -%}
+                {%- endif -%}
+                {%- set ns.empty = false -%}
+              {%- endfor -%}
+              {%- set ns.lines = ns.lines + [ns.cur] -%}
+              {{ ns.lines | to_json }}
+            {%- endmacro -%}
+            {%- set ns = namespace(out=[], sec='') -%}
+            {%- if what == 'steps' -%}
+              {%- for s in (r.recipeInstructions or []) -%}
+                {%- set t = (s.title or '') | trim -%}
+                {%- if t and t != ns.sec -%}
+                  {%- set ns.sec = t -%}
+                  {%- set ns.out = ns.out + ['# ' ~ t] -%}
+                {%- endif -%}
+                {%- set body = (s.text or '') | replace('\n', ' ') | trim -%}
+                {%- if body -%}
+                  {%- set ns.out = ns.out + (wrap(body, loop.index ~ '. ', width) | from_json) -%}
+                {%- endif -%}
+              {%- endfor -%}
+            {%- else -%}
+              {%- for i in (r.recipeIngredient or []) -%}
+                {%- set t = (i.title or '') | trim -%}
+                {%- if t and t != ns.sec -%}
+                  {%- set ns.sec = t -%}
+                  {%- set ns.out = ns.out + ['# ' ~ t] -%}
+                {%- endif -%}
+                {%- set body = (i.originalText or i.display or '') | replace('\n', ' ') | trim -%}
+                {%- if body in ['', 'None'] -%}
+                  {%- set body = (i.note or '') | trim -%}
+                {%- endif -%}
+                {%- if body and body != 'None' -%}
+                  {%- set ns.out = ns.out + (wrap(body, '', width) | from_json) -%}
+                {%- endif -%}
+              {%- endfor -%}
+            {%- endif -%}
+            {{ ns.out | to_json }}
+          pages: "{{ [((lines | count) + per_page - 1) // per_page, 1] | max }}"
+      - variables:
+          answer:
+            ok: true
+            part: "{{ what }}"
+            page: "{{ page_no }}"
+            pages: "{{ pages }}"
+            lines: "{{ lines[(page_no - 1) * per_page : page_no * per_page] }}"
+      - stop: A page of the recipe.
+        response_variable: answer

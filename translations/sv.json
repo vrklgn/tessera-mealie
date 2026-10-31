@@ -1,0 +1,43 @@
+{
+  "_meta": { "name": "Svenska" },
+  "screen": {
+    "meal": "Måltid",
+    "breakfast": "Frukost",
+    "lunch": "Lunch",
+    "dinner": "Middag",
+    "side": "Tillbehör",
+    "dessert": "Efterrätt",
+    "snack": "Mellanmål",
+    "drink": "Dryck",
+    "today": "Idag",
+    "choose": "Välj en Mealie-kalender",
+    "away": "Mealie svarar inte",
+    "none": "Inget planerat",
+    "ingredients": "Ingredienser",
+    "steps": "Gör så här",
+    "servings": "1 portion | {n} portioner",
+    "page": "{n} / {m}",
+    "tap_more": "Tryck för mer",
+    "asking": "Frågar Mealie",
+    "not_found": "Receptet finns inte i Mealie",
+    "no_script": "Ingredienser och steg kräver pluginens Home Assistant-paket (se README)",
+    "bar": "{meal}: {what}"
+  },
+  "app": {
+    "name": "Mealie",
+    "summary": "Måltiden som är planerad i Mealie, med bild, och receptet vid ett tryck: ingredienser och steg, sida för sida.",
+    "input_meal": "Måltid för toppraden",
+    "input_meal_hint": "Mealie-kalendern (eller måltidssensorn) vars måltid toppraden visar på dagen.",
+    "tile_name": "Måltid",
+    "tile_example": "Middag: Vodkapasta",
+    "picture": "Bild",
+    "picture_hint": "En image-entitet med måltidens bild, till exempel image.tessera_mealie_dinner från pluginens Home Assistant-paket.",
+    "details": "Hämta receptet",
+    "details_hint": "Portioner och tid på rutan, ingredienser och steg på kortet, från skriptet i pluginens Home Assistant-paket.",
+    "description": "Visa beskrivningen",
+    "description_hint": "Receptets beskrivning under namnet, där rutan har plats.",
+    "card_name": "Recept",
+    "bar_today": "Dagens måltid",
+    "bar_example": "Middag: Vodkapasta"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "_meta": { "name": "English" },
+  "screen": {
+    "meal": "Meal",
+    "breakfast": "Breakfast",
+    "lunch": "Lunch",
+    "dinner": "Dinner",
+    "side": "Side",
+    "dessert": "Dessert",
+    "snack": "Snack",
+    "drink": "Drink",
+    "today": "Today",
+    "choose": "Choose a Mealie calendar",
+    "away": "Mealie is away",
+    "none": "Nothing planned",
+    "ingredients": "Ingredients",
+    "steps": "Steps",
+    "servings": "1 serving | {n} servings",
+    "page": "{n} / {m}",
+    "tap_more": "Tap for more",
+    "asking": "Asking Mealie",
+    "not_found": "The recipe is not in Mealie",
+    "no_script": "Ingredients and steps need the plugin's Home Assistant package (see its README)",
+    "bar": "{meal}: {what}"
+  },
+  "app": {
+    "name": "Mealie",
+    "summary": "The meal planned in Mealie, with its picture, and the recipe on a tap: ingredients and steps, page by page.",
+    "input_meal": "Meal for the top bar",
+    "input_meal_hint": "The Mealie calendar (or meal sensor) whose meal the top bar says on its day.",
+    "tile_name": "Meal",
+    "tile_example": "Dinner: Vodkapasta",
+    "picture": "Picture",
+    "picture_hint": "An image entity with the meal's picture, such as image.tessera_mealie_dinner of the plugin's Home Assistant package.",
+    "details": "Ask for the recipe",
+    "details_hint": "Servings and time on the tile, ingredients and steps on the card, from the script of the plugin's Home Assistant package.",
+    "description": "Show the description",
+    "description_hint": "The recipe's description under its name, where the tile has room.",
+    "card_name": "Recipe",
+    "bar_today": "Today's meal",
+    "bar_example": "Dinner: Vodkapasta"
+  }
+}
