@@ -1,5 +1,7 @@
 {
-  "_meta": { "name": "English" },
+  "_meta": {
+    "name": "English"
+  },
   "screen": {
     "meal": "Meal",
     "chosen": "Recipe",
@@ -26,7 +28,9 @@
     "asking": "Asking Mealie",
     "not_found": "The recipe is not in Mealie",
     "no_script": "Ingredients and steps need the plugin's Home Assistant package (see its README)",
-    "bar": "{meal}: {what}"
+    "bar": "{meal}: {what}",
+    "step_of": "Step {n} of {m}",
+    "no_details": "Ask for the recipe is off"
   },
   "app": {
     "name": "Mealie",
@@ -47,6 +51,15 @@
     "card_name": "Recipe",
     "choose_name": "Choose a recipe",
     "bar_today": "Today's meal",
-    "bar_example": "Dinner: Vodkapasta"
+    "bar_example": "Dinner: Vodkapasta",
+    "show": "What it shows",
+    "show_hint": "The recipe itself, its ingredients, or one step at a time, large, so a page can hold the ingredients beside the steps.",
+    "show_recipe": "The recipe",
+    "show_ingredients": "The ingredients",
+    "show_steps": "One step at a time",
+    "every": "Turn the page every",
+    "every_hint": "Seconds before the ingredients show their next page, or a steps tile without a step number its next step. 0: only on a tap.",
+    "step": "Step number",
+    "step_hint": "A number entity (input_number.mealie_recipe_step) that says which step the steps tile shows; a tap on the tile moves it on, and so can voice or an automation."
   }
 }

@@ -1,5 +1,7 @@
 {
-  "_meta": { "name": "Svenska" },
+  "_meta": {
+    "name": "Svenska"
+  },
   "screen": {
     "meal": "Måltid",
     "chosen": "Recept",
@@ -26,7 +28,9 @@
     "asking": "Frågar Mealie",
     "not_found": "Receptet finns inte i Mealie",
     "no_script": "Ingredienser och steg kräver pluginens Home Assistant-paket (se README)",
-    "bar": "{meal}: {what}"
+    "bar": "{meal}: {what}",
+    "step_of": "Steg {n} av {m}",
+    "no_details": "Hämta receptet är av"
   },
   "app": {
     "name": "Mealie",
@@ -47,6 +51,15 @@
     "card_name": "Recept",
     "choose_name": "Välj ett recept",
     "bar_today": "Dagens måltid",
-    "bar_example": "Middag: Vodkapasta"
+    "bar_example": "Middag: Vodkapasta",
+    "show": "Vad rutan visar",
+    "show_hint": "Själva receptet, dess ingredienser, eller ett steg i taget, stort, så att en sida rymmer ingredienserna bredvid stegen.",
+    "show_recipe": "Receptet",
+    "show_ingredients": "Ingredienserna",
+    "show_steps": "Ett steg i taget",
+    "every": "Byt sida var",
+    "every_hint": "Sekunder innan ingredienserna visar nästa sida, eller en stegruta utan stegnummer nästa steg. 0: bara vid tryck.",
+    "step": "Stegnummer",
+    "step_hint": "En number-entitet (input_number.mealie_recipe_step) som säger vilket steg stegrutan visar; ett tryck på rutan går vidare, och det kan röst eller en automation också."
   }
 }

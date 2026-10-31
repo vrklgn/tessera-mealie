@@ -17,8 +17,8 @@ boards: any
 flash_kb: 16
 
 permissions:
-  # The choice of a recipe on the select tile's entity.
-  home_assistant_actions: [input_select.select_option, select.select_option]
+  # The choice of a recipe on the select tile's entity, and the step a steps tile moves on to in its number entity.
+  home_assistant_actions: [input_select.select_option, select.select_option, input_number.set_value, number.set_value]
   # The recipe script of the plugin's Home Assistant package: a page of ingredients or steps, or the facts of a recipe.
   ha_commands: ["call_service:script.tessera_mealie"]
   # The meal the top bar's item reads, chosen when the plugin is added to a screen.
@@ -32,8 +32,9 @@ tiles:
     name: tile_name
     icon: silverware-fork-knife
     sizes: { min: 1x1, max: 4x4 }
-    # The head, when it is, the name (two lines), the description, the facts, a note, and a place for the picture.
-    memory: 1500
+    # The head, when it is, the name (two lines), the description, the facts, a note, and a place for the picture;
+    # or up to 24 lines of ingredients.
+    memory: 4000
     pictures: 1
     # A Mealie calendar (the integration), or a meal sensor of the plugin's package: both carry the meal as `message`,
     # its description, and the day it is planned for.
@@ -47,12 +48,26 @@ tiles:
       - { id: picture, kind: entity, domains: [image], label: picture, hint: picture_hint }
       - { id: details, kind: toggle, default: true, label: details, hint: details_hint }
       - { id: description, kind: toggle, default: true, label: description, hint: description_hint }
+      # What the tile shows (plugin API 0.15 for the entity option): the recipe, or its ingredients, or one step at a
+      # time, large; the ingredients turn their page every `every` seconds; the step follows a number entity
+      # (input_number.mealie_recipe_step), which a tap moves on, so voice or an automation can turn the page.
+      - id: show
+        kind: choice
+        label: show
+        hint: show_hint
+        default: recipe
+        choices:
+          - { value: recipe, label: show_recipe }
+          - { value: ingredients, label: show_ingredients }
+          - { value: steps, label: show_steps }
+      - { id: every, kind: number, min: 0, max: 120, step: 5, unit: s, default: 0, label: every, hint: every_hint }
+      - { id: step, kind: entity, domains: [input_number, number], label: step, hint: step_hint }
   - id: pick
     name: pick_name
     icon: chef-hat
     sizes: { min: 1x1, max: 4x4 }
     # As the meal tile, and the recipes of the select to choose from (up to 64 names).
-    memory: 4800
+    memory: 7200
     pictures: 1
     # A select entity whose options are recipes and whose state is the one chosen: the package's
     # input_select.tessera_mealie_recipe, kept in step with Mealie, or a list of your own.
@@ -65,6 +80,20 @@ tiles:
       - { id: picture, kind: entity, domains: [image], label: picture, hint: picture_pick_hint }
       - { id: details, kind: toggle, default: true, label: details, hint: details_hint }
       - { id: description, kind: toggle, default: true, label: description, hint: description_hint }
+      # What the tile shows (plugin API 0.15 for the entity option): the recipe, or its ingredients, or one step at a
+      # time, large; the ingredients turn their page every `every` seconds; the step follows a number entity
+      # (input_number.mealie_recipe_step), which a tap moves on, so voice or an automation can turn the page.
+      - id: show
+        kind: choice
+        label: show
+        hint: show_hint
+        default: recipe
+        choices:
+          - { value: recipe, label: show_recipe }
+          - { value: ingredients, label: show_ingredients }
+          - { value: steps, label: show_steps }
+      - { id: every, kind: number, min: 0, max: 120, step: 5, unit: s, default: 0, label: every, hint: every_hint }
+      - { id: step, kind: entity, domains: [input_number, number], label: step, hint: step_hint }
 
 cards:
   # The recipe: the picture, the facts, and the ingredients and the steps page by page, a tap for the next page.

@@ -146,7 +146,8 @@ script:
     icon: mdi:silverware-fork-knife
     description: >-
       Answers a Tessera screen's question about a meal: the facts of its recipe (part info), or a page of its
-      ingredients or steps (part ingredients or steps), per lines of at most cols characters, wrapped on words.
+      ingredients or steps (part ingredients or steps), per lines of at most cols characters, wrapped on words, or
+      one step whole (part step, page being the step's number).
       Asks your Mealie's API directly. Made for the Tessera Mealie plugin.
     mode: parallel
     max: 10
@@ -164,11 +165,11 @@ script:
           date:
       part:
         name: Part
-        description: "info: the recipe's facts. ingredients or steps: a page of lines."
+        description: "info: the recipe's facts. ingredients or steps: a page of lines. step: one step whole, page being its number."
         default: info
         selector:
           select:
-            options: [info, ingredients, steps]
+            options: [info, ingredients, steps, step]
       page:
         name: Page
         default: 1
@@ -312,6 +313,13 @@ script:
                   {%- set ns.out = ns.out + (wrap(body, loop.index ~ '. ', width) | from_json) -%}
                 {%- endif -%}
               {%- endfor -%}
+            {%- elif what == 'step' -%}
+              {%- set steps = (r.recipeInstructions or []) -%}
+              {%- if steps | count > 0 -%}
+                {%- set n = [[page_no, 1] | max, steps | count] | min -%}
+                {%- set body = (steps[n - 1].text or '') | replace('\n', ' ') | trim -%}
+                {%- set ns.out = wrap(body, '', width) | from_json -%}
+              {%- endif -%}
             {%- else -%}
               {%- for i in (r.recipeIngredient or []) -%}
                 {%- set t = (i.title or '') | trim -%}
@@ -330,6 +338,22 @@ script:
             {%- endif -%}
             {{ ns.out | to_json }}
           pages: "{{ [((lines | count) + per_page - 1) // per_page, 1] | max }}"
+          step_total: "{{ (r.recipeInstructions or []) | count }}"
+          step_no: "{{ [[page_no, 1] | max, [step_total, 1] | max] | min }}"
+          step_title: "{{ ((r.recipeInstructions or [])[step_no - 1].title or '') if step_total > 0 else '' }}"
+      # One step: its lines whole, its number and how many steps there are.
+      - if: "{{ what == 'step' }}"
+        then:
+          - variables:
+              answer:
+                ok: true
+                part: step
+                page: "{{ step_no }}"
+                pages: "{{ step_total }}"
+                title: "{{ step_title }}"
+                lines: "{{ lines }}"
+          - stop: One step of the recipe.
+            response_variable: answer
       - variables:
           answer:
             ok: true

@@ -2,6 +2,7 @@
 #include "esphome/core/hal.h"
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -183,7 +184,8 @@ static const char *why_not(JsonObjectConst message) {
   return "no_script";
 }
 
-// ---- The tile: the meal of its calendar, or the recipe chosen on its select, with its picture ----
+// ---- The tile: the meal of its calendar, or the recipe chosen on its select, with its picture; or that recipe's
+// ingredients, or one of its steps at a time, filling the tile ----
 class MealTile : public tessera::Tile, public Asker {
  public:
   MealTile(Mealie *plugin, bool pick) : plugin_(plugin), pick_(pick) {}
@@ -196,9 +198,132 @@ class MealTile : public tessera::Tile, public Asker {
     put(entity_, sizeof entity_, c.entity);
     put(name_, sizeof name_, c.name);
     put(image_, sizeof image_, c.options["picture"] | "");
+    put(step_entity_, sizeof step_entity_, c.options["step"] | "");
     details_ = c.options["details"] | true;
     describe_ = c.options["description"] | true;
+    every_ = c.options["every"] | 0;
+    const char *show = c.options["show"] | "recipe";
+    mode_ = !strcmp(show, "ingredients") ? Mode::INGREDIENTS : !strcmp(show, "steps") ? Mode::STEPS : Mode::RECIPE;
     one_ = c.columns == 1 && c.rows == 1;
+    put(word_, sizeof word_, plugin_->meal_word(entity_).c_str());
+    if (mode_ == Mode::RECIPE) make_recipe(c);
+    else make_lines(c);
+  }
+
+  void on_state(JsonObjectConst data) override {
+    Meal m;
+    status_ = read_meal(data, entity_, m);
+    picture_of(data, image_, m);
+    if (pick_) read_choices(data, choices_);
+    // Another meal, or another day: the facts and the lines are asked again; the same one keeps them.
+    if (strcmp(m.name, meal_.name) != 0 || strcmp(m.date, meal_.date) != 0) {
+      asking_ = false;
+      failed_at_ = 0;
+      lines_.clear();
+      pages_ = 1;
+      page_ = 1;
+      have_ = false;
+    } else {
+      m.info = meal_.info;
+    }
+    meal_ = m;
+    // The step the number entity names, when one is chosen: it moves the steps tile without a touch.
+    JsonObjectConst step = data["entities"]["step"];
+    if (step_entity_[0] && !step.isNull()) {
+      const int n = static_cast<int>(strtof(step["state"] | "0", nullptr) + 0.5f);
+      if (n >= 1 && n != step_) {
+        step_ = n;
+        have_ = false;
+      }
+    }
+    ask();
+    texts();
+  }
+
+  void on_tick(uint32_t epoch) override {
+    // The day words follow the clock: "Tomorrow" becomes "Today" at midnight.
+    if (epoch / 60 != minute_) {
+      minute_ = epoch / 60;
+      texts();
+    }
+    // The page turns by itself every few seconds (the tile's `every`, 0 for never): the ingredients' next page, or
+    // the next step of a steps tile that follows no number entity.
+    const uint32_t now = esphome::millis();
+    if (every_ > 0 && mode_ != Mode::RECIPE && have_ && pages_ > 1 && !(mode_ == Mode::STEPS && step_entity_[0])) {
+      if (!turned_) turned_ = now | 1u;
+      if (now - turned_ >= static_cast<uint32_t>(every_) * 1000u) {
+        turned_ = now | 1u;
+        turn();
+      }
+    }
+    ask();
+  }
+
+  // The script's facts came, or a page of lines, or neither.
+  void answer(JsonObjectConst message) override {
+    asking_ = false;
+    JsonObjectConst r = message["result"];
+    if (!(message["ok"] | false) || !(r["ok"] | false)) {
+      failed_at_ = esphome::millis() | 1u;
+      why_ = why_not(message);
+      texts();
+      return;
+    }
+    why_ = nullptr;
+    if (!r["name"].isNull()) read_info(r, meal_.info);
+    JsonArrayConst lines = r["lines"].as<JsonArrayConst>();
+    if (!lines.isNull()) {
+      lines_.clear();
+      for (JsonVariantConst line : lines) {
+        if (static_cast<int>(lines_.size()) >= MAX_LINES) break;
+        Line l;
+        put(l.text, sizeof l.text, line | "");
+        lines_.push_back(l);
+      }
+      pages_ = std::max(1, r["pages"] | 1);
+      const int page = std::max(1, r["page"] | 1);
+      if (mode_ == Mode::STEPS) step_ = page; else page_ = page;
+      have_ = true;
+      turned_ = esphome::millis() | 1u;
+    }
+    texts();
+  }
+
+  void on_theme() override {
+    if (head_) ui::set_color(head_, theme::INK);
+    if (when_) ui::set_color(when_, theme::MUTED);
+    if (title_) ui::set_color(title_, theme::INK);
+    if (desc_) ui::set_color(desc_, theme::MUTED);
+    if (facts_) ui::set_color(facts_, theme::MUTED);
+    if (body_) ui::set_color(body_, theme::INK);
+    for (auto &r : rows_) ui::set_color(r.label, theme::INK);
+    ui::set_color(note_, theme::MUTED);
+  }
+
+  // A tap: the recipe (or, on a select tile, the list to choose from); on a list, the next page or step.
+  void on_tap() override {
+    if (status_ == Status::CHOOSE) return;
+    if (mode_ != Mode::RECIPE) {
+      if (have_ && pages_ > 1) turn();
+      return;
+    }
+    plugin_->current = meal_;
+    if (pick_) {
+      plugin_->choices = choices_;
+      tessera::open_card(plugin_->plugin_id(), "choose", entity_, tile_, name_[0] ? name_ : word_);
+      return;
+    }
+    tessera::open_card(plugin_->plugin_id(), "recipe", entity_, tile_, meal_.name);
+  }
+
+ private:
+  enum class Mode : uint8_t { RECIPE, INGREDIENTS, STEPS };
+  struct Row {
+    lv_obj_t *label = nullptr;
+  };
+
+  // The recipe: the picture, the meal and when it is, the name, the description and the facts.
+  void make_recipe(const tessera::TileContext &c) {
     const bool pictures = ui::pictures() && image_[0] && !one_;
     const int gap = ui::px(6);
     const int th = ui::line_height(Font::TITLE), bh = ui::line_height(Font::BODY);
@@ -261,106 +386,175 @@ class MealTile : public tessera::Tile, public Asker {
       lv_obj_set_size(desc_, w, std::min(3, rest / bh) * bh);
       lv_obj_set_pos(desc_, x, body_top + lines * lh);
     }
-    // What the tile says while it has no meal: in the middle of the words' room.
-    note_ = ui::text(c.parent, Font::BODY, theme::MUTED);
-    lv_obj_set_size(note_, w, 2 * bh);
+    make_note(c.parent, x, body_top, w, room);
+  }
+
+  // The ingredients, or one step: the recipe's name and the page at the top, the lines under them.
+  void make_lines(const tessera::TileContext &c) {
+    const int gap = ui::px(6), th = ui::line_height(Font::TITLE), bh = ui::line_height(Font::BODY);
+    head_ = ui::label(c.parent, Font::TITLE, theme::INK);
+    lv_obj_set_pos(head_, 0, 0);
+    when_ = ui::label(c.parent, Font::BODY, theme::MUTED);
+    const int ww = width_ * 40 / 100;
+    lv_obj_set_size(when_, ww, bh);
+    lv_obj_set_style_text_align(when_, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_pos(when_, width_ - ww, (th - bh) / 2);
+    lv_obj_set_width(head_, std::max(1, width_ - ww - gap));
+    body_top_ = th + ui::px(2);
+    body_h_ = std::max(1, height_ - body_top_);
+    if (mode_ == Mode::INGREDIENTS) {
+      // One line each, in the key's face (the second line's on the compact look), as many as fit.
+      line_font_ = ui::large() ? Font::BODY_LARGE : Font::BODY;
+      const int lh = ui::line_height(line_font_);
+      indent_ = ui::text_width("8. ", line_font_);
+      const int row = lh + ui::px(2);
+      const int count = std::max(1, std::min(MAX_LINES, body_h_ / row));
+      for (int i = 0; i < count; ++i) {
+        Row r;
+        r.label = ui::label(c.parent, line_font_, theme::INK);
+        lv_obj_set_size(r.label, width_, lh);
+        lv_obj_set_pos(r.label, 0, body_top_ + i * row);
+        rows_.push_back(r);
+      }
+      const int cw = std::max(1, ui::text_width("abcdefghijklmnopqrstuvwxyz", line_font_) / 26);
+      cols_ = std::max(8, std::min(MAX_COLS, (width_ - indent_) / cw));
+      per_ = count;
+    } else {
+      // The step as one text, wrapped by the screen in the largest face it fits in (texts()).
+      body_ = ui::text(c.parent, Font::BODY_LARGE, theme::INK);
+      lv_obj_set_size(body_, width_, body_h_);
+      lv_obj_set_pos(body_, 0, body_top_);
+      cols_ = MAX_COLS;
+      per_ = MAX_LINES;
+    }
+    make_note(c.parent, 0, body_top_, width_, body_h_);
+  }
+
+  // What the tile says while it has nothing to show: in the middle of the words' room.
+  void make_note(lv_obj_t *parent, int x, int top, int w, int room) {
+    const int bh = ui::line_height(Font::BODY);
+    note_ = ui::text(parent, Font::BODY, theme::MUTED);
+    lv_obj_set_size(note_, w, 3 * bh);
     lv_obj_set_style_text_align(note_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_pos(note_, x, body_top + std::max(0, (room - 2 * bh) / 2));
-    put(word_, sizeof word_, plugin_->meal_word(entity_).c_str());
+    lv_obj_set_pos(note_, x, top + std::max(0, (room - 3 * bh) / 2));
   }
 
-  void on_state(JsonObjectConst data) override {
-    Meal m;
-    status_ = read_meal(data, entity_, m);
-    picture_of(data, image_, m);
-    if (pick_) read_choices(data, choices_);
-    // Another meal, or another day: the facts are asked again; the same one keeps them.
-    if (strcmp(m.name, meal_.name) != 0 || strcmp(m.date, meal_.date) != 0) {
-      asking_ = false;
-      failed_at_ = 0;
-    } else {
-      m.info = meal_.info;
+  // The next page of the ingredients, or the next step: through the number entity when the tile follows one, so
+  // Home Assistant and every screen agree; round, the first after the last.
+  void turn() {
+    const int next = (mode_ == Mode::STEPS ? step_ : page_) % pages_ + 1;
+    if (mode_ == Mode::STEPS && step_entity_[0]) {
+      JsonDocument fields;
+      fields["value"] = next;
+      const char *service = starts(step_entity_, "number.") ? "number.set_value" : "input_number.set_value";
+      tessera::action(service, step_entity_, fields.as<JsonVariantConst>());
     }
-    meal_ = m;
-    ask();
-    texts();
-  }
-
-  void on_tick(uint32_t epoch) override {
-    // The day words follow the clock: "Tomorrow" becomes "Today" at midnight.
-    if (epoch / 60 != minute_) {
-      minute_ = epoch / 60;
-      texts();
-    }
+    if (mode_ == Mode::STEPS) step_ = next; else page_ = next;
+    have_ = false;
+    failed_at_ = 0;
     ask();
   }
 
-  // The script's facts came, or did not.
-  void answer(JsonObjectConst message) override {
-    asking_ = false;
-    JsonObjectConst r = message["result"];
-    if ((message["ok"] | false) && (r["ok"] | false)) {
-      read_info(r, meal_.info);
-    } else {
-      failed_at_ = esphome::millis() | 1u;
-    }
-    texts();
-  }
-
-  void on_theme() override {
-    ui::set_color(head_, theme::INK);
-    ui::set_color(when_, theme::MUTED);
-    ui::set_color(title_, theme::INK);
-    if (desc_) ui::set_color(desc_, theme::MUTED);
-    if (facts_) ui::set_color(facts_, theme::MUTED);
-    ui::set_color(note_, theme::MUTED);
-  }
-
-  // A tap opens the recipe; on a select tile, the list to choose from.
-  void on_tap() override {
-    if (status_ == Status::CHOOSE) return;
-    plugin_->current = meal_;
-    if (pick_) {
-      plugin_->choices = choices_;
-      tessera::open_card(plugin_->plugin_id(), "choose", entity_, tile_, name_[0] ? name_ : word_);
-      return;
-    }
-    tessera::open_card(plugin_->plugin_id(), "recipe", entity_, tile_, meal_.name);
-  }
-
- private:
-  // The facts of the meal, once per meal, and again after a while when the script did not answer.
+  // What the tile still needs of the script: the facts of the recipe, or the lines of its page; once per page, and
+  // again after a while when the script did not answer.
   void ask() {
-    if (!details_ || status_ != Status::SHOWN || meal_.info.ok || asking_) return;
+    if (!details_ || status_ != Status::SHOWN || asking_) return;
+    if (mode_ == Mode::RECIPE ? meal_.info.ok : have_) return;
     if (failed_at_ && esphome::millis() - failed_at_ < RETRY_MS) return;
-    asking_ = plugin_->ask(this, meal_, "info", 0, 0, 0) != 0;
+    const bool steps = mode_ == Mode::STEPS;
+    asking_ = mode_ == Mode::RECIPE ? plugin_->ask(this, meal_, "info", 0, 0, 0) != 0
+            : plugin_->ask(this, meal_, steps ? "step" : "ingredients", steps ? step_ : page_, per_, cols_) != 0;
     if (!asking_) failed_at_ = esphome::millis() | 1u;
+  }
+
+  // The lines of one step as one text: a line that goes on is joined to the one before it.
+  std::string joined() const {
+    std::string text;
+    for (const Line &l : lines_) {
+      const char *s = l.text;
+      if (s[0] == '#' && s[1] == ' ') continue;
+      while (*s == ' ') ++s;
+      if (!text.empty()) text += ' ';
+      text += s;
+    }
+    return text;
+  }
+
+  // The step in the largest face whose wrapped lines fit the room: the width of the whole text, with room for the
+  // words that fall onto the next line, against the room's lines of that face.
+  void paint_step() {
+    const std::string text = joined();
+    Font face = Font::BODY;
+    for (Font f : {Font::HEADLINE, Font::TITLE, Font::BODY_LARGE, Font::BODY}) {
+      const int lh = ui::line_height(f);
+      const int lines = (ui::text_width(text, f) * 12 / 10) / std::max(1, width_) + 1;
+      face = f;
+      if (lines * lh <= body_h_) break;
+    }
+    ui::set_font(body_, face);
+    const int lh = ui::line_height(face);
+    lv_obj_set_height(body_, std::max(lh, body_h_ / lh * lh));
+    ui::set_text(body_, text);
   }
 
   void texts() {
     const bool shown = status_ == Status::SHOWN;
-    ui::set_text(head_, name_[0] ? name_ : word_);
-    ui::set_text(when_, shown ? when_text(plugin_, meal_.start) : "");
-    ui::set_text(title_, shown ? meal_.name : "");
-    if (desc_) ui::set_text(desc_, shown ? description_of(meal_) : "");
-    if (facts_) ui::set_text(facts_, shown ? facts_text(plugin_, meal_.info) : "");
     const char *why = status_ == Status::CHOOSE ? (pick_ ? "choose_select" : "choose")
                     : status_ == Status::AWAY ? "away"
                     : status_ == Status::NONE ? (pick_ ? "none_chosen" : "none") : nullptr;
+    if (mode_ == Mode::RECIPE) {
+      ui::set_text(head_, name_[0] ? name_ : word_);
+      ui::set_text(when_, shown ? when_text(plugin_, meal_.start) : "");
+      ui::set_text(title_, shown ? meal_.name : "");
+      if (desc_) ui::set_text(desc_, shown ? description_of(meal_) : "");
+      if (facts_) ui::set_text(facts_, shown ? facts_text(plugin_, meal_.info) : "");
+      ui::set_text(note_, why ? plugin_->text(why) : "");
+      if (place_) ui::set_picture(place_, shown ? meal_.picture : "", tessera::Fit::COVER);
+      return;
+    }
+    // A list: the recipe's name, the page or the step at the right, and the lines.
+    ui::set_text(head_, shown ? meal_.name : (name_[0] ? name_ : word_));
+    std::string at;
+    if (shown && have_) {
+      const std::string n = std::to_string(mode_ == Mode::STEPS ? step_ : page_), m = std::to_string(pages_);
+      at = tessera::fill(tessera::fill(plugin_->text(mode_ == Mode::STEPS ? "step_of" : "page"), "n", n).c_str(), "m", m);
+    }
+    ui::set_text(when_, at);
+    if (!why && shown && !details_) why = "no_details";
+    else if (!why && shown && !have_) why = why_ ? why_ : "asking";
     ui::set_text(note_, why ? plugin_->text(why) : "");
-    if (place_) ui::set_picture(place_, shown ? meal_.picture : "", tessera::Fit::COVER);
+    const bool lines = shown && have_ && !why;
+    for (int i = 0; i < static_cast<int>(rows_.size()); ++i) {
+      const char *line = lines && i < static_cast<int>(lines_.size()) ? lines_[i].text : "";
+      const bool section = line[0] == '#' && line[1] == ' ';
+      const bool more_of = line[0] == ' ';
+      const Font face = section ? Font::TITLE : line_font_;
+      ui::set_font(rows_[i].label, face);
+      lv_obj_set_height(rows_[i].label, ui::line_height(face));
+      lv_obj_set_x(rows_[i].label, more_of ? indent_ : 0);
+      ui::set_text(rows_[i].label, section ? line + 2 : more_of ? line + 1 : line);
+    }
+    if (body_) {
+      if (lines) paint_step();
+      else ui::set_text(body_, "");
+    }
   }
 
   Mealie *plugin_;
   bool pick_;
-  int width_ = 0, height_ = 0, tile_ = -1;
-  char entity_[64] = {}, name_[52] = {}, image_[64] = {}, word_[32] = {};
-  bool details_ = true, describe_ = true, one_ = false, asking_ = false;
-  uint32_t failed_at_ = 0, minute_ = 0;
+  Mode mode_ = Mode::RECIPE;
+  int width_ = 0, height_ = 0, tile_ = -1, body_top_ = 0, body_h_ = 1, indent_ = 0, cols_ = MAX_COLS, per_ = 1;
+  int every_ = 0, page_ = 1, step_ = 1, pages_ = 1;
+  char entity_[64] = {}, name_[52] = {}, image_[64] = {}, step_entity_[64] = {}, word_[32] = {};
+  bool details_ = true, describe_ = true, one_ = false, asking_ = false, have_ = false;
+  uint32_t failed_at_ = 0, minute_ = 0, turned_ = 0;
   Status status_ = Status::CHOOSE;
+  const char *why_ = nullptr;   // a text key for why the script gave no lines, or none
+  Font line_font_ = Font::BODY_LARGE;
   Meal meal_;
-  tessera::List<Line> choices_;
-  lv_obj_t *place_{}, *head_{}, *when_{}, *title_{}, *desc_{}, *facts_{}, *note_{};
+  tessera::List<Line> choices_, lines_;
+  tessera::List<Row> rows_;
+  lv_obj_t *place_{}, *head_{}, *when_{}, *title_{}, *desc_{}, *facts_{}, *body_{}, *note_{};
 };
 
 // ---- The card: the recipe, its ingredients and its steps page by page ----

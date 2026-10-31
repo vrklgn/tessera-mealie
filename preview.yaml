@@ -23,6 +23,16 @@ tiles:
     entity: input_select.tessera_mealie_recipe
     options: { picture: image.tessera_mealie_chosen }
     sizes: [2x2, 2x1, 1x1]
+  - tile: pick
+    name: Ingredients
+    entity: input_select.tessera_mealie_recipe
+    options: { show: ingredients, every: 20 }
+    sizes: [2x2, 2x3, 1x2, 4x2]
+  - tile: pick
+    name: Step
+    entity: input_select.tessera_mealie_recipe
+    options: { show: steps, step: input_number.mealie_recipe_step }
+    sizes: [2x2, 3x2, 2x1]
 
 states:
   calendar.mealie_dinner:
@@ -54,6 +64,9 @@ states:
     attributes:
       friendly_name: Tessera Mealie recipe
       options: [Beef stew, Chicken curry, Grilled chicken with smashed potatoes, Lasagne, Pancakes, Ramen, Vodkapasta]
+  input_number.mealie_recipe_step:
+    state: "2.0"
+    attributes: { friendly_name: Mealie recipe step, min: 1, max: 20, step: 1 }
   image.tessera_mealie_chosen:
     state: "2026-10-31T09:00:00+00:00"
     attributes:
