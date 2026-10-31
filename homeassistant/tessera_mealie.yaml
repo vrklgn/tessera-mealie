@@ -125,6 +125,7 @@ script:
                 ok: true
                 name: "{{ got.recipe.name }}"
                 slug: "{{ got.recipe.slug }}"
+                description: "{{ got.recipe.description or '' }}"
                 servings: "{{ got.recipe.recipe_servings | int(0) }}"
                 yield: "{{ got.recipe.recipe_yield or '' }}"
                 total: "{{ got.recipe.total_time or '' }}"

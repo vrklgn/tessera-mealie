@@ -92,7 +92,7 @@ answers like this works, whatever it reads):
 
 | Asked with | Answers |
 |---|---|
-| `recipe` (the meal's name, or a slug), `date` (`2026-10-31`, optional; a recipe picked by hand has none), `part: info` | `{ ok: true, name, slug, servings (a number), yield (Mealie's word for it, or ""), total, prep, cook (texts, or ""), ingredients, steps (counts), picture (the recipe id) }` |
+| `recipe` (the meal's name, or a slug), `date` (`2026-10-31`, optional; a recipe picked by hand has none), `part: info` | `{ ok: true, name, slug, description, servings (a number), yield (Mealie's word for it, or ""), total, prep, cook (texts, or ""), ingredients, steps (counts), picture (the recipe id) }` |
 | the same with `part: ingredients` or `steps`, `page` (from 1), `per` (lines a page), `cols` (characters a line, at most 46) | `{ ok: true, part, page, pages, lines: [...] }`: `per` lines of at most `cols` characters and 46 bytes, wrapped on words. A line that goes on from the one before starts with a space; a section's name starts with `# `; a step's first line starts with its number, `3. `. |
 | a recipe it cannot find | `{ ok: false, error: not_found }` |
 

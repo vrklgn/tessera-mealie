@@ -255,6 +255,7 @@ script:
                 ok: true
                 name: "{{ r.name }}"
                 slug: "{{ r.slug }}"
+                description: "{{ r.description or '' }}"
                 servings: "{{ r.recipeServings | int(0) }}"
                 yield: "{{ r.recipeYield or '' }}"
                 total: "{{ r.totalTime or '' }}"

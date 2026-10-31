@@ -143,6 +143,7 @@ static void picture_of(JsonObjectConst data, const char *image, Meal &m) {
 // The script's facts about a recipe.
 static void read_info(JsonObjectConst r, Info &i) {
   i.ok = true;
+  put(i.description, sizeof i.description, r["description"] | "");
   i.servings = r["servings"] | 0;
   put(i.yield, sizeof i.yield, r["yield"] | "");
   put(i.total, sizeof i.total, r["total"] | "");
@@ -153,6 +154,9 @@ static void read_info(JsonObjectConst r, Info &i) {
 }
 
 static std::string dot() { return ui::covers(" · ", Font::BODY) ? " · " : ", "; }
+
+// The description: the entity's own (a calendar's), else the script's.
+static const char *description_of(const Meal &m) { return m.description[0] ? m.description : m.info.description; }
 
 // "4 personer" (Mealie's own word), "4 servings", or "".
 static std::string servings_text(const tessera::Plugin *plugin, const Info &i) {
@@ -338,7 +342,7 @@ class MealTile : public tessera::Tile, public Asker {
     ui::set_text(head_, name_[0] ? name_ : word_);
     ui::set_text(when_, shown ? when_text(plugin_, meal_.start) : "");
     ui::set_text(title_, shown ? meal_.name : "");
-    if (desc_) ui::set_text(desc_, shown ? meal_.description : "");
+    if (desc_) ui::set_text(desc_, shown ? description_of(meal_) : "");
     if (facts_) ui::set_text(facts_, shown ? facts_text(plugin_, meal_.info) : "");
     const char *why = status_ == Status::CHOOSE ? (pick_ ? "choose_select" : "choose")
                     : status_ == Status::AWAY ? "away"
@@ -397,7 +401,7 @@ class RecipeCard : public tessera::Card, public Asker {
     lv_obj_set_size(facts_, w, bh);
     lv_obj_set_pos(facts_, x, 2 * hh);
     y += gap;
-    if (meal_.description[0] && height_ - y > 6 * lh) {
+    if ((meal_.description[0] || is_select(meal_.entity)) && height_ - y > 6 * lh) {
       desc_ = ui::text(c.parent, Font::BODY, theme::MUTED);
       lv_obj_set_size(desc_, width_, 2 * bh);
       lv_obj_set_pos(desc_, 0, y);
@@ -522,7 +526,7 @@ class RecipeCard : public tessera::Card, public Asker {
     const std::string more = facts_text(plugin_, meal_.info);
     if (!more.empty()) facts += (facts.empty() ? "" : dot()) + more;
     ui::set_text(facts_, facts);
-    if (desc_) ui::set_text(desc_, meal_.description);
+    if (desc_) ui::set_text(desc_, description_of(meal_));
     ui::set_text(header_, plugin_->text(steps_ ? "steps" : "ingredients"));
     // Each line: a section's name in the title's face, a line that goes on indented under the one before it.
     for (int i = 0; i < static_cast<int>(rows_.size()); ++i) {

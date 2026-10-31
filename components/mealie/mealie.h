@@ -20,6 +20,7 @@ class Asker {
 // in its head. Fixed fields, so a Meal is one block in PSRAM (docs/FIRMWARE_API.md, "Memory").
 struct Info {
   bool ok = false;
+  char description[52] = {};   // the recipe's description, for a recipe chosen by hand (a select has none)
   int servings = 0;
   char yield[32] = {};   // Mealie's own word for the servings ("personer"), "" for none
   char total[32] = {}, prep[32] = {}, cook[32] = {};
