@@ -9,7 +9,8 @@
 #   sensor.tessera_mealie_dinner    the dinner planned next, shaped as a Mealie calendar: the tile's entity
 #   image.tessera_mealie_dinner     its picture, served from your Mealie
 #                                   (copy the two blocks for lunch, breakfast, side, dessert, snack, drink)
-#   input_select.tessera_mealie_recipe   every recipe in Mealie, for the Chosen recipe tile and its picker
+#   input_select.tessera_mealie_recipe   every recipe in Mealie, for the Chosen recipe tile, its picker and a dashboard
+#   input_number.tessera_mealie_step     the step a steps tile shows, back to 1 when another recipe is chosen
 #   sensor.tessera_mealie_recipes  the recipes' ids by name, and the automation that fills the list
 #   image.tessera_mealie_chosen    the picture of the recipe chosen
 #
@@ -25,7 +26,8 @@
 #   4. Reload: Developer tools > YAML > All YAML configuration (or restart Home Assistant). Needs Home Assistant
 #      2025.4 or newer. Do not use this file together with tessera_mealie.yaml: both make script.tessera_mealie.
 #   5. In Tessera, give the Meal tile sensor.tessera_mealie_dinner and, under Picture, image.tessera_mealie_dinner.
-#      The Chosen recipe tile takes input_select.tessera_mealie_recipe and image.tessera_mealie_chosen.
+#      The Chosen recipe tile takes input_select.tessera_mealie_recipe and image.tessera_mealie_chosen;
+#      a steps tile takes input_number.tessera_mealie_step under Step number.
 
 rest_command:
   # One call of Mealie's API: `path` after /api/, the token from secrets.yaml.
@@ -132,12 +134,46 @@ template:
           {{ 'http://192.168.1.10:9925/api/media/recipes/' ~ id ~ '/images/min-original.webp' if id else '' }}
         verify_ssl: false
 
-# The recipe chosen by hand. Its options are filled from Mealie above; the "-" is only there until then.
+# The recipe chosen by hand. Its options are filled from Mealie above; the "-" is only there until then. Put it on a
+# dashboard (a tile card with its select feature, or an entities row) and a recipe picked on a phone shows on every
+# screen whose Chosen recipe tile follows it.
 input_select:
   tessera_mealie_recipe:
     name: Tessera Mealie recipe
     icon: mdi:chef-hat
     options: ["-"]
+
+# The step a steps tile shows (its Step number): a tap on the tile, voice or an automation moves it on.
+input_number:
+  tessera_mealie_step:
+    name: Tessera Mealie step
+    icon: mdi:format-list-numbered
+    min: 1
+    max: 99
+    step: 1
+    mode: box
+
+automation:
+  # Another recipe chosen, on a screen or on a phone: its steps start at the first.
+  - id: tessera_mealie_new_recipe
+    alias: Tessera Mealie - new recipe, first step
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: input_select.tessera_mealie_recipe
+        not_from: ["-", unknown, unavailable]
+        not_to: ["-", unknown, unavailable]
+    actions:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tessera_mealie_step
+        data:
+          value: 1
+      # To open the recipe on a screen as well (it wakes and shows the page with the Chosen recipe tiles), take away
+      # the # of the three lines below, and put your screen's name and that page's number in them.
+      # - action: esphome.kitchen_show_page
+      #   data:
+      #     page: 2
 
 
 script:

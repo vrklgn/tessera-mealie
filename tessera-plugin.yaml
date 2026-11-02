@@ -4,7 +4,7 @@
 # Mealie's API. A second tile shows a recipe chosen by hand on a select entity, with a picker a tap opens. The ingredients and the steps come from a script in Home Assistant (homeassistant/), asked through the
 # app page by page: a screen never reaches Mealie itself. docs/MANIFEST.md of tessera-plugins has every field.
 id: mealie
-version: 0.1.0
+version: 0.1.1
 api: "0.17"
 icon: silverware-fork-knife
 maintainer: vrklgn
@@ -50,7 +50,7 @@ tiles:
       - { id: description, kind: toggle, default: true, label: description, hint: description_hint }
       # What the tile shows (plugin API 0.15 for the entity option): the recipe, or its ingredients, or one step at a
       # time, large; the ingredients turn their page every `every` seconds; the step follows a number entity
-      # (input_number.mealie_recipe_step), which a tap moves on, so voice or an automation can turn the page.
+      # (input_number.tessera_mealie_step), which a tap moves on, so voice or an automation can turn the page.
       - id: show
         kind: choice
         label: show
@@ -82,7 +82,7 @@ tiles:
       - { id: description, kind: toggle, default: true, label: description, hint: description_hint }
       # What the tile shows (plugin API 0.15 for the entity option): the recipe, or its ingredients, or one step at a
       # time, large; the ingredients turn their page every `every` seconds; the step follows a number entity
-      # (input_number.mealie_recipe_step), which a tap moves on, so voice or an automation can turn the page.
+      # (input_number.tessera_mealie_step), which a tap moves on, so voice or an automation can turn the page.
       - id: show
         kind: choice
         label: show

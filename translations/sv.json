@@ -60,6 +60,6 @@
     "every": "Byt sida var",
     "every_hint": "Sekunder innan ingredienserna visar nästa sida, eller en stegruta utan stegnummer nästa steg. 0: bara vid tryck.",
     "step": "Stegnummer",
-    "step_hint": "En number-entitet (input_number.mealie_recipe_step) som säger vilket steg stegrutan visar; ett tryck på rutan går vidare, och det kan röst eller en automation också."
+    "step_hint": "En number-entitet (input_number.tessera_mealie_step) som säger vilket steg stegrutan visar; ett tryck på rutan går vidare, och det kan röst eller en automation också."
   }
 }

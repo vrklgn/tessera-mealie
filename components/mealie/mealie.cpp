@@ -222,6 +222,9 @@ class MealTile : public tessera::Tile, public Asker {
       lines_.clear();
       pages_ = 1;
       page_ = 1;
+      // A tile that counts its steps for itself starts the new recipe at its first; with a number entity, the entity
+      // says which (the package sets it back to 1).
+      if (!step_entity_[0]) step_ = 1;
       have_ = false;
     } else {
       m.info = meal_.info;
@@ -430,13 +433,15 @@ class MealTile : public tessera::Tile, public Asker {
     make_note(c.parent, 0, body_top_, width_, body_h_);
   }
 
-  // What the tile says while it has nothing to show: in the middle of the words' room.
+  // What the tile says while it has nothing to show: in the middle of the words' room, as many lines as it holds (one
+  // on a low tile of a small screen).
   void make_note(lv_obj_t *parent, int x, int top, int w, int room) {
     const int bh = ui::line_height(Font::BODY);
+    const int h = std::max(1, std::min(3, room / bh)) * bh;
     note_ = ui::text(parent, Font::BODY, theme::MUTED);
-    lv_obj_set_size(note_, w, 3 * bh);
+    lv_obj_set_size(note_, w, h);
     lv_obj_set_style_text_align(note_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_pos(note_, x, top + std::max(0, (room - 3 * bh) / 2));
+    lv_obj_set_pos(note_, x, top + std::max(0, (room - h) / 2));
   }
 
   // The next page of the ingredients, or the next step: through the number entity when the tile follows one, so
@@ -636,12 +641,17 @@ class RecipeCard : public tessera::Card, public Asker {
     ask(false, 1);
   }
 
-  // The tile it was opened from changed: another meal starts the recipe again. A recipe chosen on the picker stays
-  // while Home Assistant catches up with the choice.
+  // The tile it was opened from changed: another meal starts the recipe again, also one chosen elsewhere (a phone). A
+  // recipe chosen on the picker stays while Home Assistant catches up with the choice, and follows the select after.
   void on_state(JsonObjectConst data) override {
-    if (meal_.fixed) return;
     Meal m;
-    if (read_meal(data, meal_.entity, m) != Status::SHOWN || !strcmp(m.name, meal_.name)) return;
+    if (read_meal(data, meal_.entity, m) != Status::SHOWN || !strcmp(m.name, meal_.name)) {
+      if (meal_.fixed && !strcmp(m.name, meal_.name)) meal_.fixed = false;
+      return;
+    }
+    if (meal_.fixed) return;
+    // The picture is the last meal's: none until the card is opened again.
+    if (place_) ui::set_picture(place_, "", tessera::Fit::COVER);
     put(meal_.name, sizeof meal_.name, m.name);
     put(meal_.description, sizeof meal_.description, m.description);
     put(meal_.date, sizeof meal_.date, m.date);

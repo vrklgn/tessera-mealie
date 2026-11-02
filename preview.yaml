@@ -31,7 +31,7 @@ tiles:
   - tile: pick
     name: Step
     entity: input_select.tessera_mealie_recipe
-    options: { show: steps, step: input_number.mealie_recipe_step }
+    options: { show: steps, step: input_number.tessera_mealie_step }
     sizes: [2x2, 3x2, 2x1]
 
 states:
@@ -64,9 +64,9 @@ states:
     attributes:
       friendly_name: Tessera Mealie recipe
       options: [Beef stew, Chicken curry, Grilled chicken with smashed potatoes, Lasagne, Pancakes, Ramen, Vodkapasta]
-  input_number.mealie_recipe_step:
+  input_number.tessera_mealie_step:
     state: "2.0"
-    attributes: { friendly_name: Mealie recipe step, min: 1, max: 20, step: 1 }
+    attributes: { friendly_name: Tessera Mealie step, min: 1, max: 20, step: 1 }
   image.tessera_mealie_chosen:
     state: "2026-10-31T09:00:00+00:00"
     attributes:

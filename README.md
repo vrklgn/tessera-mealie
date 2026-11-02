@@ -42,17 +42,23 @@ screen asks page by page, and an image entity with the meal's picture. Two packa
 
 4. Back in the tile's inspector, choose `image.tessera_mealie_dinner` under **Picture**. The tile shows the picture
    from the next time its data comes; the card shows it large.
-6. For a recipe picked by hand, place the **Chosen recipe** tile, give it `input_select.tessera_mealie_recipe` (the
+5. For a recipe picked by hand, place the **Chosen recipe** tile, give it `input_select.tessera_mealie_recipe` (the
    package fills it with every recipe in Mealie, sorted by name) and `image.tessera_mealie_chosen` under **Picture**. A
    tap on the tile opens the list; a tap on a recipe chooses it, in Home Assistant too, and opens its recipe. A select
    of your own works as well, as long as its options are recipe names Mealie knows (the Picture then needs a map of
    your own, as `sensor.tessera_mealie_recipes` in the package shows).
-7. For the whole recipe on the page, with no tap at all: place the same tile two or three times and set **What it
+6. For the whole recipe on the page, with no tap at all: place the same tile two or three times and set **What it
    shows** on each: **The recipe** (name, picture, facts), **The ingredients** (the list fills the tile and turns its
    page every so many seconds, **Turn the page every**) and **One step at a time** (one step, large; **Step number**
-   names an `input_number` that says which step, so voice, an automation or a tap on the tile moves it on). All
+   takes `input_number.tessera_mealie_step`, so voice, an automation or a tap on the tile moves it on). All
    follow the same select, or the same calendar, so a kitchen timer and a music tile fit beside them. The Meal tile
    has the same modes for a planned meal.
+7. To pick the recipe on your phone, put `input_select.tessera_mealie_recipe` on a Home Assistant dashboard: a tile
+   card with its select feature, or a row of an entities card. A recipe picked there shows on every Chosen recipe tile
+   that follows the select, on every screen, and on a recipe card that is open; the step goes back to 1. To have a
+   screen wake and open the page with those tiles as well, take away the `#` of the three lines at the end of the
+   package's automation and put your screen's name and the page's number in them (`esphome.kitchen_show_page`,
+   `page: 2`).
 
 More meal types: the integration package makes images for dinner and lunch; copy an `image` block for breakfast, side,
 dessert, snack or drink and change the calendar in it. The API package makes the dinner sensor and image; copy both
@@ -72,7 +78,8 @@ blocks and change `dinner` to the type you want.
   counts for itself, and turns by itself when Turn the page every is set.
 - **The card.** The picture, the name, the day, the servings and the time, the description, then the ingredients. A
   tap turns the page: the rest of the ingredients, then the steps, numbered, then the ingredients again. A section's
-  name ("Optional: home-made pasta") stands in bold over its lines. Back closes it.
+  name ("Optional: home-made pasta") stands in bold over its lines. Another recipe chosen while it is open (on a
+  phone, by an automation) takes its place. Back closes it.
 - **The picker.** The recipes of the select, one per row, a dot before the one chosen, as many rows as fit; the line
   at the bottom turns the page. A tap on a row chooses that recipe (Home Assistant's select follows) and opens its
   recipe card; a tap on the one already chosen just opens it. The list holds what the select's options carry to

@@ -60,6 +60,6 @@
     "every": "Turn the page every",
     "every_hint": "Seconds before the ingredients show their next page, or a steps tile without a step number its next step. 0: only on a tap.",
     "step": "Step number",
-    "step_hint": "A number entity (input_number.mealie_recipe_step) that says which step the steps tile shows; a tap on the tile moves it on, and so can voice or an automation."
+    "step_hint": "A number entity (input_number.tessera_mealie_step) that says which step the steps tile shows; a tap on the tile moves it on, and so can voice or an automation."
   }
 }
